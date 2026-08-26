@@ -27,6 +27,9 @@ export default async function AdminLayout({
         <Link href="/admin/funcionarios" className="underline">
           Funcionários
         </Link>
+        <Link href="/admin/alcada" className="underline">
+          Alçada
+        </Link>
         <Link href="/" className="ml-auto underline">
           Voltar ao app
         </Link>

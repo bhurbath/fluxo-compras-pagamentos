@@ -1,13 +1,19 @@
 import { atribuirDepartamentoAction } from "@/app/admin/actions";
 import { AcessoRestrito } from "../_components/acesso-restrito";
+import { ErroMensagem } from "../_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarDepartamentos, listarFuncionarios } from "@/lib/departamentos";
 
-export default async function FuncionariosPage() {
+export default async function FuncionariosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string }>;
+}) {
   if (!(await getFinanceiroUsuario())) {
     return <AcessoRestrito />;
   }
 
+  const { erro } = await searchParams;
   const [funcionarios, departamentos] = await Promise.all([
     listarFuncionarios(),
     listarDepartamentos(),
@@ -16,6 +22,7 @@ export default async function FuncionariosPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Funcionários</h1>
+      <ErroMensagem erro={erro} />
 
       {funcionarios.length === 0 ? (
         <p>Nenhum funcionário cadastrado ainda (aparecem aqui após o primeiro login).</p>

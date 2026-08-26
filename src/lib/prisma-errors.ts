@@ -20,6 +20,8 @@ export function toFriendlyError(error: unknown): Error {
         return new Error(
           "Registro não encontrado. Ele pode ter sido removido — atualize a página."
         );
+      case "P2020":
+        return new Error("Um dos valores informados é grande ou pequeno demais.");
     }
   }
   return error instanceof Error ? error : new Error("Erro inesperado.");

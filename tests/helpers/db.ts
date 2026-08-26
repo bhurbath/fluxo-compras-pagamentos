@@ -13,6 +13,6 @@ export const testDb = getDb();
 // the dev database's tables even if search_path resolution changes.
 export async function resetDb(): Promise<void> {
   await testDb.$executeRawUnsafe(
-    `TRUNCATE TABLE "test"."usuarios", "test"."departamentos" RESTART IDENTITY CASCADE;`
+    `TRUNCATE TABLE "test"."usuarios", "test"."departamentos", "test"."faixas_alcada" RESTART IDENTITY CASCADE;`
   );
 }
