@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { Prisma } from "@prisma/client";
-import { db } from "@/lib/db";
+import { getDb } from "@/lib/db";
 
 // Single source of truth for the tenant: the issuer is derived from it
 // (rather than the other way around) so nothing downstream — like the
@@ -25,7 +25,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!user.email || !idEntra) return false;
 
       try {
-        await db.usuario.upsert({
+        await getDb().usuario.upsert({
           where: { idEntra },
           update: {
             email: user.email,
@@ -47,11 +47,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // email already belongs to a different row — most likely the same
         // person's Entra account was recreated (new oid) with the same
         // corporate email. Treat it as the same person and repoint that
-        // row at the new idEntra instead of failing the login.
-        await db.usuario.update({
+        // row at the new idEntra instead of failing the login. flagFinanceiro
+        // is deliberately reset, not carried over: we can't actually verify
+        // this is the same person (Entra email reuse after offboarding would
+        // hit this same path), so admin rights have to be re-granted
+        // explicitly rather than silently following an email match.
+        await getDb().usuario.update({
           where: { email: user.email },
           data: {
             idEntra,
+            flagFinanceiro: false,
             ...(user.name ? { nome: user.name } : {}),
           },
         });
@@ -66,7 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, profile }) {
       const idEntra = (profile?.oid as string | undefined) ?? profile?.sub;
       if (idEntra) {
-        const usuario = await db.usuario.findUnique({ where: { idEntra } });
+        const usuario = await getDb().usuario.findUnique({ where: { idEntra } });
         if (usuario) token.usuarioId = usuario.id;
       }
       return token;

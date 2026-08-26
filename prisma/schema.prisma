@@ -7,15 +7,42 @@ datasource db {
 }
 
 // Ticket 01: base user record, populated on Microsoft SSO login.
-// departamentoId (nullable, FK) is added by ticket 02 once Departamento exists.
 model Usuario {
-  id              String   @id @default(cuid())
-  nome            String
-  email           String   @unique
-  idEntra         String   @unique
-  flagFinanceiro  Boolean  @default(false)
-  criadoEm        DateTime @default(now())
-  atualizadoEm    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  nome           String
+  email          String   @unique
+  idEntra        String   @unique
+  flagFinanceiro Boolean  @default(false)
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  // Ticket 02: which department this employee belongs to (nullable — not
+  // every logged-in user has been assigned one yet).
+  departamentoId String?
+  departamento   Departamento? @relation("FuncionarioDepartamento", fields: [departamentoId], references: [id])
+
+  // Inverse sides of Departamento.responsavel / Departamento.diretor — a
+  // Usuario can be the level-1 or level-2 approver for several departments.
+  departamentosResponsavel Departamento[] @relation("DepartamentoResponsavel")
+  departamentosDiretor     Departamento[] @relation("DepartamentoDiretor")
 
   @@map("usuarios")
+}
+
+// Ticket 02: organizational structure the approval flow is built on.
+// responsavelId (level-1 approver) and diretorId (level-2 approver) are
+// required, not nullable — a department can't be created without both.
+model Departamento {
+  id            String   @id @default(cuid())
+  nome          String   @unique
+  responsavelId String
+  responsavel   Usuario  @relation("DepartamentoResponsavel", fields: [responsavelId], references: [id])
+  diretorId     String
+  diretor       Usuario  @relation("DepartamentoDiretor", fields: [diretorId], references: [id])
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  funcionarios Usuario[] @relation("FuncionarioDepartamento")
+
+  @@map("departamentos")
 }

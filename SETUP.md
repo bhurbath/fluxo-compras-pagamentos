@@ -43,7 +43,15 @@ Reaproveita o mesmo app registrado no passo 2 — não é preciso criar conta em
 2. Clique em **"Grant admin consent for \<tenant\>"** (precisa de um administrador do tenant).
 3. Defina `EMAIL_FROM` com uma caixa de e-mail real do tenant (ex: `ti@suaempresa.com.br`) — o app passa a poder enviar e-mail **como** essa caixa.
 
-## 4. Deploy
+## 4. Acesso à área de administração (Financeiro)
+
+Não existe tela para conceder a flag Financeiro (nada poderia conceder a primeira). Depois de fazer login pelo menos uma vez, rode:
+
+```bash
+npx tsx scripts/set-financeiro.ts seu-email@suaempresa.com.br
+```
+
+## 5. Deploy
 
 Recomendado: [Vercel](https://vercel.com), que integra nativamente com Next.js.
 
