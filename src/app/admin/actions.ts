@@ -16,18 +16,46 @@ import {
   excluirFaixaAlcada,
   type FaixaAlcadaInput,
 } from "@/lib/alcada";
+import {
+  atualizarTipoCompra,
+  criarTipoCompra,
+  excluirTipoCompra,
+  type TipoCompraInput,
+} from "@/lib/tipos-compra";
+import {
+  atualizarEntradaMatriz,
+  criarEntradaMatriz,
+  excluirEntradaMatriz,
+  type MatrizCompradorInput,
+} from "@/lib/matriz-comprador";
 import { toFriendlyError } from "@/lib/prisma-errors";
 
-function parseDepartamentoForm(formData: FormData): DepartamentoInput {
-  const nome = String(formData.get("nome") ?? "").trim();
-  const responsavelId = String(formData.get("responsavelId") ?? "");
-  const diretorId = String(formData.get("diretorId") ?? "");
-
-  if (!nome || !responsavelId || !diretorId) {
-    throw new Error("Nome, responsável e diretor são obrigatórios.");
+// Reads a fixed set of string fields from FormData, trimmed. Every admin
+// form reads a handful of required (and sometimes optional) string fields
+// this same way — this just removes the repeated `String(formData.get(...)
+// ?? "").trim()` per field, not the required-field message itself (each
+// form keeps its own specific wording below).
+function lerCampos<Chaves extends string>(
+  formData: FormData,
+  chaves: Chaves[]
+): Record<Chaves, string> {
+  const valores = {} as Record<Chaves, string>;
+  for (const chave of chaves) {
+    valores[chave] = String(formData.get(chave) ?? "").trim();
   }
+  return valores;
+}
 
-  return { nome, responsavelId, diretorId };
+function exigirTodos(valores: Record<string, string>, mensagem: string): void {
+  if (Object.values(valores).some((valor) => !valor)) {
+    throw new Error(mensagem);
+  }
+}
+
+function parseDepartamentoForm(formData: FormData): DepartamentoInput {
+  const campos = lerCampos(formData, ["nome", "responsavelId", "diretorId"]);
+  exigirTodos(campos, "Nome, responsável e diretor são obrigatórios.");
+  return campos;
 }
 
 export const criarDepartamentoAction = withFinanceiro(async (_usuario, formData: FormData) => {
@@ -57,14 +85,11 @@ export const atualizarDepartamentoAction = withFinanceiro(
 );
 
 export const atribuirDepartamentoAction = withFinanceiro(async (_usuario, formData: FormData) => {
-  const usuarioId = String(formData.get("usuarioId") ?? "");
-  const departamentoIdRaw = String(formData.get("departamentoId") ?? "");
+  const { usuarioId, departamentoId } = lerCampos(formData, ["usuarioId", "departamentoId"]);
 
   try {
-    if (!usuarioId) {
-      throw new Error("Funcionário inválido.");
-    }
-    await atribuirDepartamento(usuarioId, departamentoIdRaw || null);
+    exigirTodos({ usuarioId }, "Funcionário inválido.");
+    await atribuirDepartamento(usuarioId, departamentoId || null);
   } catch (error) {
     redirectComErro("/admin/funcionarios", toFriendlyError(error));
   }
@@ -73,15 +98,10 @@ export const atribuirDepartamentoAction = withFinanceiro(async (_usuario, formDa
 });
 
 function parseFaixaForm(formData: FormData): FaixaAlcadaInput {
-  const valorMin = String(formData.get("valorMin") ?? "").trim();
-  const valorMaxRaw = String(formData.get("valorMax") ?? "").trim();
+  const { valorMin, valorMax } = lerCampos(formData, ["valorMin", "valorMax"]);
   const exigeNivel2 = formData.get("exigeNivel2") === "on";
-
-  if (!valorMin) {
-    throw new Error("Valor mínimo é obrigatório.");
-  }
-
-  return { valorMin, valorMax: valorMaxRaw || null, exigeNivel2 };
+  exigirTodos({ valorMin }, "Valor mínimo é obrigatório.");
+  return { valorMin, valorMax: valorMax || null, exigeNivel2 };
 }
 
 export const criarFaixaAlcadaAction = withFinanceiro(async (_usuario, formData: FormData) => {
@@ -122,5 +142,95 @@ export const excluirFaixaAlcadaAction = withFinanceiro(
     }
 
     revalidatePath("/admin/alcada");
+  }
+);
+
+function parseTipoCompraForm(formData: FormData): TipoCompraInput {
+  const campos = lerCampos(formData, ["nome"]);
+  exigirTodos(campos, "O nome do tipo de compra é obrigatório.");
+  return campos;
+}
+
+export const criarTipoCompraAction = withFinanceiro(async (_usuario, formData: FormData) => {
+  try {
+    const input = parseTipoCompraForm(formData);
+    await criarTipoCompra(input);
+  } catch (error) {
+    redirectComErro("/admin/tipos-compra/novo", toFriendlyError(error));
+  }
+
+  revalidatePath("/admin/tipos-compra");
+  redirect("/admin/tipos-compra");
+});
+
+export const atualizarTipoCompraAction = withFinanceiro(
+  async (_usuario, id: string, formData: FormData) => {
+    try {
+      const input = parseTipoCompraForm(formData);
+      await atualizarTipoCompra(id, input);
+    } catch (error) {
+      redirectComErro(`/admin/tipos-compra/${id}`, toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/tipos-compra");
+    redirect("/admin/tipos-compra");
+  }
+);
+
+export const excluirTipoCompraAction = withFinanceiro(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (_usuario, id: string, _formData: FormData) => {
+    try {
+      await excluirTipoCompra(id);
+    } catch (error) {
+      redirectComErro("/admin/tipos-compra", toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/tipos-compra");
+  }
+);
+
+function parseMatrizForm(formData: FormData): MatrizCompradorInput {
+  const campos = lerCampos(formData, ["departamentoId", "tipoCompraId", "compradorId"]);
+  exigirTodos(campos, "Departamento, tipo de compra e comprador são obrigatórios.");
+  return campos;
+}
+
+export const criarEntradaMatrizAction = withFinanceiro(async (_usuario, formData: FormData) => {
+  try {
+    const input = parseMatrizForm(formData);
+    await criarEntradaMatriz(input);
+  } catch (error) {
+    redirectComErro("/admin/matriz-comprador/novo", toFriendlyError(error));
+  }
+
+  revalidatePath("/admin/matriz-comprador");
+  redirect("/admin/matriz-comprador");
+});
+
+export const atualizarEntradaMatrizAction = withFinanceiro(
+  async (_usuario, id: string, formData: FormData) => {
+    try {
+      const input = parseMatrizForm(formData);
+      await atualizarEntradaMatriz(id, input);
+    } catch (error) {
+      redirectComErro(`/admin/matriz-comprador/${id}`, toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/matriz-comprador");
+    redirect("/admin/matriz-comprador");
+  }
+);
+
+export const excluirEntradaMatrizAction = withFinanceiro(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (_usuario, id: string, _formData: FormData) => {
+    try {
+      await excluirEntradaMatriz(id);
+    } catch (error) {
+      redirectComErro("/admin/matriz-comprador", toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/matriz-comprador");
   }
 );

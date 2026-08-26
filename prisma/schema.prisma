@@ -26,6 +26,9 @@ model Usuario {
   departamentosResponsavel Departamento[] @relation("DepartamentoResponsavel")
   departamentosDiretor     Departamento[] @relation("DepartamentoDiretor")
 
+  // Ticket 04: matrix entries where this Usuario is the designated comprador.
+  matrizComprador MatrizComprador[]
+
   @@map("usuarios")
 }
 
@@ -44,6 +47,9 @@ model Departamento {
 
   funcionarios Usuario[] @relation("FuncionarioDepartamento")
 
+  // Ticket 04: matrix entries scoped to this department.
+  matrizComprador MatrizComprador[]
+
   @@map("departamentos")
 }
 
@@ -60,4 +66,37 @@ model FaixaAlcada {
   atualizadoEm DateTime @updatedAt
 
   @@map("faixas_alcada")
+}
+
+// Ticket 04: categorizes solicitações; seeded with 3 initial values but
+// extensible via the admin screen without code changes.
+model TipoCompra {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  matrizComprador MatrizComprador[]
+
+  @@map("tipos_compra")
+}
+
+// Ticket 04: for a given (departamento, tipoCompra) pair, who buys it — the
+// lookup a later ticket uses to auto-assign a comprador once a solicitação
+// is approved. Not every combination needs an entry (unmatched ones fall
+// back to Financeiro deciding manually), so the FK pair is unique but
+// optional to populate.
+model MatrizComprador {
+  id             String       @id @default(cuid())
+  departamentoId String
+  departamento   Departamento @relation(fields: [departamentoId], references: [id])
+  tipoCompraId   String
+  tipoCompra     TipoCompra   @relation(fields: [tipoCompraId], references: [id])
+  compradorId    String
+  comprador      Usuario      @relation(fields: [compradorId], references: [id])
+  criadoEm       DateTime     @default(now())
+  atualizadoEm   DateTime     @updatedAt
+
+  @@unique([departamentoId, tipoCompraId])
+  @@map("matriz_comprador")
 }

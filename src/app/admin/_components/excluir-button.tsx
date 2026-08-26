@@ -2,15 +2,16 @@
 
 import { useTransition } from "react";
 
-// A misclick here permanently deletes an alçada band with no undo, and this
-// is the first destructive action in the admin panel, so it needs its own
-// confirmation (no shared confirm-dialog component exists yet to reuse) —
-// plus a disabled/pending state so a double-click can't fire the delete
-// twice.
-export function ExcluirFaixaButton({
+// Shared confirm-and-pending delete button for every destructive action in
+// the admin panel — first written for faixas de alçada (ticket 03), now
+// generalized so tipos de compra and matriz de comprador (ticket 04) don't
+// each reimplement the same confirm()/disabled-state logic.
+export function ExcluirButton({
   action,
+  confirmMessage,
 }: {
   action: (formData: FormData) => Promise<void>;
+  confirmMessage: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -20,9 +21,7 @@ export function ExcluirFaixaButton({
       disabled={pending}
       className="underline text-red-600 disabled:opacity-50"
       onClick={() => {
-        if (!confirm("Excluir esta faixa de alçada? Essa ação não pode ser desfeita.")) {
-          return;
-        }
+        if (!confirm(confirmMessage)) return;
         startTransition(() => {
           action(new FormData());
         });

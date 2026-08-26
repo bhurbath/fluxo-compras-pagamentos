@@ -2,7 +2,7 @@ import Link from "next/link";
 import { excluirFaixaAlcadaAction } from "@/app/admin/actions";
 import { AcessoRestrito } from "../_components/acesso-restrito";
 import { ErroMensagem } from "../_components/erro-mensagem";
-import { ExcluirFaixaButton } from "./_components/excluir-faixa-button";
+import { ExcluirButton } from "../_components/excluir-button";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarFaixasAlcada } from "@/lib/alcada";
 import { formatarReais } from "@/lib/format";
@@ -57,8 +57,9 @@ export default async function AlcadaPage({
                   <Link href={`/admin/alcada/${faixa.id}`} className="underline">
                     Editar
                   </Link>
-                  <ExcluirFaixaButton
+                  <ExcluirButton
                     action={excluirFaixaAlcadaAction.bind(null, faixa.id)}
+                    confirmMessage="Excluir esta faixa de alçada? Essa ação não pode ser desfeita."
                   />
                 </td>
               </tr>

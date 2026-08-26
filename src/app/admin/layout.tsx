@@ -30,6 +30,12 @@ export default async function AdminLayout({
         <Link href="/admin/alcada" className="underline">
           Alçada
         </Link>
+        <Link href="/admin/tipos-compra" className="underline">
+          Tipos de compra
+        </Link>
+        <Link href="/admin/matriz-comprador" className="underline">
+          Matriz de comprador
+        </Link>
         <Link href="/" className="ml-auto underline">
           Voltar ao app
         </Link>
