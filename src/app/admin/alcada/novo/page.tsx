@@ -1,7 +1,7 @@
 import { criarFaixaAlcadaAction } from "@/app/admin/actions";
 import { FaixaForm } from "../_components/faixa-form";
 import { AcessoRestrito } from "../../_components/acesso-restrito";
-import { ErroMensagem } from "../../_components/erro-mensagem";
+import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 
 export default async function NovaFaixaAlcadaPage({

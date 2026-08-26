@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { paraDecimal } from "@/lib/decimal";
 import { Prisma } from "@prisma/client";
 
 export type FaixaAlcadaInput = {
@@ -10,18 +11,6 @@ export type FaixaAlcadaInput = {
 // Matches the schema's Decimal(12, 2) column — checked here so a too-large
 // value gets a clear message instead of a raw Prisma P2020 at insert time.
 const VALOR_MAXIMO = new Prisma.Decimal("9999999999.99");
-
-function paraDecimal(valor: string, campo: string): Prisma.Decimal {
-  try {
-    // Parsing with the exact same Decimal implementation Prisma persists
-    // with (not Number()) means validation can never accept a string that
-    // then fails — or silently means something different — once it reaches
-    // the database.
-    return new Prisma.Decimal(valor);
-  } catch {
-    throw new Error(`${campo} precisa ser um número válido.`);
-  }
-}
 
 function seSobrepoe(
   aMin: Prisma.Decimal,

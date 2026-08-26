@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { excluirFaixaAlcadaAction } from "@/app/admin/actions";
 import { AcessoRestrito } from "../_components/acesso-restrito";
-import { ErroMensagem } from "../_components/erro-mensagem";
+import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { ExcluirButton } from "../_components/excluir-button";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarFaixasAlcada } from "@/lib/alcada";

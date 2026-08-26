@@ -29,6 +29,12 @@ model Usuario {
   // Ticket 04: matrix entries where this Usuario is the designated comprador.
   matrizComprador MatrizComprador[]
 
+  // Ticket 05: solicitações this Usuario created, vs. ones assigned to them
+  // to buy (a later ticket) — distinct relations, same two models.
+  solicitacoesCriadas   Solicitacao[]          @relation("SolicitacoesCriadas")
+  solicitacoesCompradas Solicitacao[]          @relation("SolicitacoesCompradas")
+  solicitacaoHistorico  SolicitacaoHistorico[]
+
   @@map("usuarios")
 }
 
@@ -49,6 +55,9 @@ model Departamento {
 
   // Ticket 04: matrix entries scoped to this department.
   matrizComprador MatrizComprador[]
+
+  // Ticket 05: solicitações made against this department.
+  solicitacoes Solicitacao[]
 
   @@map("departamentos")
 }
@@ -78,6 +87,9 @@ model TipoCompra {
 
   matrizComprador MatrizComprador[]
 
+  // Ticket 05: solicitações of this tipo de compra.
+  solicitacoes Solicitacao[]
+
   @@map("tipos_compra")
 }
 
@@ -99,4 +111,133 @@ model MatrizComprador {
 
   @@unique([departamentoId, tipoCompraId])
   @@map("matriz_comprador")
+}
+
+// Ticket 05: simple named lookups requested alongside the solicitação form
+// (matching the company's existing purchase-request template) — each is
+// just a name, cadastrado pelo Financeiro, same shape as TipoCompra.
+model CentroCusto {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  solicitacoes Solicitacao[]
+
+  @@map("centros_custo")
+}
+
+model CentroResultado {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  solicitacoes Solicitacao[]
+
+  @@map("centros_resultado")
+}
+
+model ContaContabil {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  solicitacoes Solicitacao[]
+
+  @@map("contas_contabeis")
+}
+
+model Empresa {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  solicitacoes Solicitacao[]
+
+  @@map("empresas")
+}
+
+enum FormaPagamento {
+  ADIANTAMENTO
+  A_VISTA
+  PARCELADO
+}
+
+// Ticket 05: the state machine driving the whole approval/purchase/payment
+// flow. See src/lib/workflow.ts — every transition is a function there, not
+// a status update scattered across callers. Not every state is reachable
+// yet (compra_confirmada onward are later tickets), but they're modeled now
+// so the enum doesn't need a breaking change per ticket.
+enum StatusSolicitacao {
+  RASCUNHO
+  ENVIADO
+  AGUARDANDO_NIVEL2
+  APROVADO
+  REJEITADO
+  COMPRA_CONFIRMADA
+  AGUARDANDO_PAGAMENTO
+  PAGAMENTO_RECUSADO
+  PAGO
+}
+
+model Solicitacao {
+  id             String            @id @default(cuid())
+  solicitanteId  String
+  solicitante    Usuario           @relation("SolicitacoesCriadas", fields: [solicitanteId], references: [id])
+  departamentoId String
+  departamento   Departamento      @relation(fields: [departamentoId], references: [id])
+  tipoCompraId   String
+  tipoCompra     TipoCompra        @relation(fields: [tipoCompraId], references: [id])
+  descricao      String
+  valor          Decimal           @db.Decimal(12, 2)
+  status         StatusSolicitacao @default(RASCUNHO)
+
+  // Fields matching the company's existing purchase-request template.
+  fornecedor                String
+  formaPagamento            FormaPagamento
+  centroCustoId             String
+  centroCusto               CentroCusto     @relation(fields: [centroCustoId], references: [id])
+  centroResultadoId         String
+  centroResultado           CentroResultado @relation(fields: [centroResultadoId], references: [id])
+  contaContabilId           String
+  contaContabil             ContaContabil   @relation(fields: [contaContabilId], references: [id])
+  empresaId                 String
+  empresa                   Empresa         @relation(fields: [empresaId], references: [id])
+  linkCompra                String?
+  informacoesComplementares String?
+
+  // Populated by later tickets (comprador assignment, purchase, payment) —
+  // nullable because they don't exist until the solicitação reaches that
+  // point in the flow.
+  compradorId             String?
+  comprador               Usuario? @relation("SolicitacoesCompradas", fields: [compradorId], references: [id])
+  notaFiscalUrl           String?
+  comprovantePagamentoUrl String?
+  motivoRejeicao          String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  historico SolicitacaoHistorico[]
+
+  @@map("solicitacoes")
+}
+
+// Simple status trail (spec: "histórico simples de status, não um log de
+// auditoria completo") — one row per transition, not a full audit log of
+// every field change.
+model SolicitacaoHistorico {
+  id            String      @id @default(cuid())
+  solicitacaoId String
+  solicitacao   Solicitacao @relation(fields: [solicitacaoId], references: [id])
+  evento        String
+  atorId        String?
+  ator          Usuario?    @relation(fields: [atorId], references: [id])
+  detalhe       String?
+  criadoEm      DateTime    @default(now())
+
+  @@map("solicitacao_historico")
 }

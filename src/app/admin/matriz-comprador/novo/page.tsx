@@ -1,7 +1,7 @@
 import { criarEntradaMatrizAction } from "@/app/admin/actions";
 import { MatrizForm } from "../_components/matriz-form";
 import { AcessoRestrito } from "../../_components/acesso-restrito";
-import { ErroMensagem } from "../../_components/erro-mensagem";
+import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarDepartamentos, listarFuncionarios } from "@/lib/departamentos";
 import { listarTiposCompra } from "@/lib/tipos-compra";

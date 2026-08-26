@@ -36,6 +36,18 @@ export default async function AdminLayout({
         <Link href="/admin/matriz-comprador" className="underline">
           Matriz de comprador
         </Link>
+        <Link href="/admin/centros-custo" className="underline">
+          Centros de custo
+        </Link>
+        <Link href="/admin/centros-resultado" className="underline">
+          Centros de resultado
+        </Link>
+        <Link href="/admin/contas-contabeis" className="underline">
+          Contas contábeis
+        </Link>
+        <Link href="/admin/empresas" className="underline">
+          Empresas
+        </Link>
         <Link href="/" className="ml-auto underline">
           Voltar ao app
         </Link>

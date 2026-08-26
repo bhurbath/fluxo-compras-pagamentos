@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import type { Usuario } from "@prisma/client";
 
 /**
@@ -7,13 +6,7 @@ import type { Usuario } from "@prisma/client";
  * the Financeiro flag, or null otherwise.
  */
 export async function getFinanceiroUsuario(): Promise<Usuario | null> {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-
-  const usuario = await getDb().usuario.findUnique({
-    where: { id: session.user.id },
-  });
-
+  const usuario = await getUsuarioAutenticado();
   return usuario?.flagFinanceiro ? usuario : null;
 }
 

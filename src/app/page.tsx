@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth, signIn, signOut } from "@/lib/auth";
 
 export default async function Home() {
@@ -11,6 +12,12 @@ export default async function Home() {
           <p>
             Logado como <strong>{session.user.name}</strong> ({session.user.email})
           </p>
+          <Link
+            href="/solicitacoes/nova"
+            className="rounded bg-blue-600 px-4 py-2 text-white"
+          >
+            Nova solicitação de compra
+          </Link>
           <form
             action={async () => {
               "use server";
