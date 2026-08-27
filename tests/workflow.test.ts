@@ -6,8 +6,10 @@ import {
   aprovarNivel1,
   aprovarNivel2,
   criarSolicitacao,
+  designarCompradorManualmente,
   editarSolicitacao,
   enviarSolicitacao,
+  listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
   reenviarSolicitacao,
@@ -139,6 +141,49 @@ async function criarSolicitacaoAguardandoNivel2(sufixo: string, diretorId?: stri
   });
   const aguardando = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
   return { solicitacao: aguardando, departamento, solicitante };
+}
+
+// Creates a full solicitação already in APROVADO (no nível 2 involved) —
+// the starting point every designarComprador/designarCompradorManualmente/
+// listarPendentesDesignacaoComprador test needs. Every call site only cares
+// about the resulting solicitação, not the department/solicitante it was
+// built from.
+async function criarSolicitacaoAprovada(sufixo: string) {
+  await criarFaixa("0", null, false);
+  const { solicitacao, departamento } = await criarSolicitacaoEnviada(sufixo);
+  return aprovarNivel1(solicitacao.id, departamento.responsavelId);
+}
+
+async function criarEntradaMatriz(
+  departamentoId: string,
+  tipoCompraId: string,
+  compradorId: string
+) {
+  return testDb.matrizComprador.create({ data: { departamentoId, tipoCompraId, compradorId } });
+}
+
+// Creates a solicitação already ENVIADO, with a matriz_comprador entry
+// already set up for its (departamento, tipoCompra) pair — the shared setup
+// every "designa automaticamente pela matriz" test needs before calling
+// aprovarNivel1 itself.
+async function criarSolicitacaoEnviadaComEntradaMatriz(sufixo: string) {
+  const comprador = await criarUsuario(`comp-${sufixo}`);
+  await criarFaixa("0", null, false);
+  const departamento = await criarDepartamento(sufixo);
+  const tipo = await criarTipoCompra(`Tipo ${sufixo}`);
+  await criarEntradaMatriz(departamento.id, tipo.id, comprador.id);
+  const solicitante = await criarUsuario(`sol-${sufixo}`);
+  const campos = await criarCamposObrigatorios(sufixo);
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Compra de teste",
+    valor: "500",
+    ...campos,
+  });
+  const enviada = await enviarSolicitacao(rascunho.id);
+  return { enviada, departamento, comprador };
 }
 
 // Reuses every field already on a solicitação as the base for an edit call
@@ -627,10 +672,13 @@ describe("workflow: aprovarNivel1", () => {
       where: { solicitacaoId: solicitacao.id },
       orderBy: { criadoEm: "asc" },
     });
+    // Sem entrada na matriz de comprador, designarComprador cai no
+    // fallback e grava seu próprio evento de histórico logo em seguida.
     expect(historico.map((h) => h.evento)).toEqual([
       "rascunho_criado",
       "enviado",
       "aprovado",
+      "aguardando_designacao_manual",
     ]);
   });
 
@@ -1057,11 +1105,14 @@ describe("workflow: aprovarNivel2", () => {
       where: { solicitacaoId: solicitacao.id },
       orderBy: { criadoEm: "asc" },
     });
+    // Sem entrada na matriz de comprador, designarComprador cai no
+    // fallback e grava seu próprio evento de histórico logo em seguida.
     expect(historico.map((h) => h.evento)).toEqual([
       "rascunho_criado",
       "enviado",
       "aguardando_nivel2",
       "aprovado",
+      "aguardando_designacao_manual",
     ]);
   });
 
@@ -1108,5 +1159,227 @@ describe("workflow: listarPendentesNivel2", () => {
     const pendentes = await listarPendentesNivel2(departamento.diretorId);
 
     expect(pendentes).toHaveLength(1);
+  });
+});
+
+describe("workflow: designarComprador (automático)", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("designa o comprador automaticamente quando há uma entrada na matriz", async () => {
+    const { enviada, departamento, comprador } =
+      await criarSolicitacaoEnviadaComEntradaMatriz("m1");
+
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(aprovada.compradorId).toBe(comprador.id);
+  });
+
+  it("mantém compradorId nulo e notifica o Financeiro quando não há entrada na matriz", async () => {
+    const financeiro1 = await criarUsuario("fin-m2a");
+    const financeiro2 = await criarUsuario("fin-m2b");
+    await testDb.usuario.update({ where: { id: financeiro1.id }, data: { flagFinanceiro: true } });
+    await testDb.usuario.update({ where: { id: financeiro2.id }, data: { flagFinanceiro: true } });
+    const enviarSpy = vi.spyOn(fake, "send");
+
+    const solicitacao = await criarSolicitacaoAprovada("m2");
+
+    expect(solicitacao.compradorId).toBeNull();
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: financeiro1.email })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: financeiro2.email })
+    );
+  });
+
+  it("notifica o comprador designado automaticamente por e-mail", async () => {
+    const { enviada, departamento, comprador } =
+      await criarSolicitacaoEnviadaComEntradaMatriz("m3");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: comprador.email })
+    );
+  });
+
+  it("grava um evento de histórico ao designar automaticamente pela matriz", async () => {
+    const { enviada, departamento } = await criarSolicitacaoEnviadaComEntradaMatriz("m4");
+
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: aprovada.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "aprovado",
+      "comprador_designado",
+    ]);
+  });
+
+  it("designa automaticamente também ao aprovar de nível 2", async () => {
+    const comprador = await criarUsuario("comp-m5");
+    const { solicitacao, departamento } = await criarSolicitacaoAguardandoNivel2("m5");
+    await criarEntradaMatriz(departamento.id, solicitacao.tipoCompraId, comprador.id);
+
+    const aprovada = await aprovarNivel2(solicitacao.id, departamento.diretorId);
+
+    expect(aprovada.compradorId).toBe(comprador.id);
+  });
+
+  it("designa automaticamente também quando o envio pula direto para aprovado", async () => {
+    const comprador = await criarUsuario("comp-m6");
+    await criarFaixa("0", null, false);
+    const pessoa = await criarUsuario("resp-m6");
+    const departamento = await criarDepartamento("m6", { responsavelId: pessoa.id });
+    const tipo = await criarTipoCompra("Tipo m6");
+    await criarEntradaMatriz(departamento.id, tipo.id, comprador.id);
+    const campos = await criarCamposObrigatorios("m6");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: pessoa.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+
+    const enviada = await enviarSolicitacao(rascunho.id);
+
+    expect(enviada.status).toBe("APROVADO");
+    expect(enviada.compradorId).toBe(comprador.id);
+  });
+});
+
+describe("workflow: designarCompradorManualmente", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("designa o comprador escolhido manualmente", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("man1");
+    const financeiro = await criarUsuario("fin-man1");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador = await criarUsuario("comp-man1");
+
+    const designada = await designarCompradorManualmente(
+      solicitacao.id,
+      financeiro.id,
+      comprador.id
+    );
+
+    expect(designada.compradorId).toBe(comprador.id);
+  });
+
+  it("lança erro se quem designa não é do Financeiro", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("man2");
+    const naoFinanceiro = await criarUsuario("naofin-man2");
+    const comprador = await criarUsuario("comp-man2");
+
+    await expect(
+      designarCompradorManualmente(solicitacao.id, naoFinanceiro.id, comprador.id)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aprovada", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoEnviada("man3");
+    const financeiro = await criarUsuario("fin-man3");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador = await criarUsuario("comp-man3");
+
+    await expect(
+      designarCompradorManualmente(solicitacao.id, financeiro.id, comprador.id)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação já tem comprador designado", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("man4");
+    const financeiro = await criarUsuario("fin-man4");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador1 = await criarUsuario("comp-man4a");
+    const comprador2 = await criarUsuario("comp-man4b");
+    await designarCompradorManualmente(solicitacao.id, financeiro.id, comprador1.id);
+
+    await expect(
+      designarCompradorManualmente(solicitacao.id, financeiro.id, comprador2.id)
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao designar manualmente", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("man5");
+    const financeiro = await criarUsuario("fin-man5");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador = await criarUsuario("comp-man5");
+
+    await designarCompradorManualmente(solicitacao.id, financeiro.id, comprador.id);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("comprador_designado");
+    expect(historico.at(-1)?.atorId).toBe(financeiro.id);
+  });
+
+  it("notifica o comprador designado manualmente por e-mail", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("man6");
+    const financeiro = await criarUsuario("fin-man6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador = await criarUsuario("comp-man6");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await designarCompradorManualmente(solicitacao.id, financeiro.id, comprador.id);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: comprador.email })
+    );
+  });
+});
+
+describe("workflow: listarPendentesDesignacaoComprador", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações aprovadas sem comprador designado", async () => {
+    const solicitacao = await criarSolicitacaoAprovada("p1");
+
+    const pendentes = await listarPendentesDesignacaoComprador();
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("não lista solicitações com comprador já designado nem em outros status", async () => {
+    // Aprovada, mas já com comprador — não deve aparecer.
+    const comComprador = await criarSolicitacaoAprovada("p2");
+    const financeiro = await criarUsuario("fin-p2");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const comprador = await criarUsuario("comp-p2");
+    await designarCompradorManualmente(comComprador.id, financeiro.id, comprador.id);
+
+    // Ainda enviada, nem aprovada — não deve aparecer.
+    await criarSolicitacaoEnviada("p2-enviada");
+
+    const pendentes = await listarPendentesDesignacaoComprador();
+
+    expect(pendentes).toHaveLength(0);
   });
 });

@@ -15,6 +15,7 @@ export async function obterSolicitacao(id: string) {
       centroResultado: true,
       contaContabil: true,
       empresa: true,
+      comprador: true,
     },
   });
 }
@@ -306,6 +307,154 @@ async function notificarSolicitanteAprovado(solicitacao: {
   });
 }
 
+// Shared by the automatic (matriz match) and manual (Financeiro-picked)
+// comprador designation paths — same "you've been assigned" email either way.
+async function notificarComprador(
+  solicitacao: { descricao: string; valor: Prisma.Decimal },
+  comprador: { email: string; nome: string }
+): Promise<void> {
+  await getEmailSender().send({
+    to: comprador.email,
+    subject: "Você foi designado para realizar uma compra",
+    html:
+      `<p>Olá, ${comprador.nome}.</p>` +
+      `<p>Você foi designado para realizar a compra da solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}).</p>`,
+  });
+}
+
+// "Atribuída ao Financeiro" não é um único dono — Financeiro é uma flag em
+// Usuario, não uma pessoa — então isso avisa todo mundo que tem a flag.
+async function notificarTodosFinanceiros(solicitacao: {
+  descricao: string;
+  valor: Prisma.Decimal;
+}): Promise<void> {
+  const financeiros = await getDb().usuario.findMany({ where: { flagFinanceiro: true } });
+  await Promise.all(
+    financeiros.map((f) =>
+      getEmailSender().send({
+        to: f.email,
+        subject: "Solicitação aguardando designação de comprador",
+        html:
+          `<p>Olá, ${f.nome}.</p>` +
+          `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+          "foi aprovada, mas não há um comprador cadastrado na matriz para essa combinação " +
+          "de departamento e tipo de compra. Designe um comprador manualmente.</p>",
+      })
+    )
+  );
+}
+
+// Runs automatically the moment a solicitação reaches APROVADO (called from
+// processarEnvio, aprovarNivel1, and aprovarNivel2 — the only three places
+// that transition can happen). Looks up matriz_comprador by
+// (departamentoId, tipoCompraId); with no match, the request just stays
+// with compradorId null and every Financeiro user is notified to designate
+// one manually via designarCompradorManualmente.
+async function designarComprador(solicitacao: {
+  id: string;
+  departamentoId: string;
+  tipoCompraId: string;
+  descricao: string;
+  valor: Prisma.Decimal;
+}): Promise<void> {
+  const entrada = await getDb().matrizComprador.findFirst({
+    where: {
+      departamentoId: solicitacao.departamentoId,
+      tipoCompraId: solicitacao.tipoCompraId,
+    },
+    include: { comprador: true },
+  });
+
+  if (entrada) {
+    // O `where` reconfirma compradorId ainda nulo — sem isso, essa
+    // designação automática poderia sobrescrever uma designação manual
+    // que o Financeiro tenha feito na janela entre a solicitação chegar
+    // em APROVADO e este lookup rodar.
+    const { count } = await getDb().solicitacao.updateMany({
+      where: { id: solicitacao.id, compradorId: null },
+      data: { compradorId: entrada.compradorId },
+    });
+    if (count === 0) {
+      return;
+    }
+    await registrarHistorico(
+      solicitacao.id,
+      "comprador_designado",
+      null,
+      `Designado automaticamente pela matriz: ${entrada.comprador.nome}.`
+    );
+    await notificarComprador(solicitacao, entrada.comprador);
+    return;
+  }
+
+  await registrarHistorico(
+    solicitacao.id,
+    "aguardando_designacao_manual",
+    null,
+    "Nenhuma combinação encontrada na matriz de comprador — aguardando designação manual pelo Financeiro."
+  );
+  await notificarTodosFinanceiros(solicitacao);
+}
+
+export async function designarCompradorManualmente(
+  id: string,
+  atorId: string,
+  compradorId: string
+) {
+  const ator = await getDb().usuario.findUnique({ where: { id: atorId } });
+  if (!ator?.flagFinanceiro) {
+    throw new Error("Só o Financeiro pode designar um comprador manualmente.");
+  }
+
+  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.APROVADO) {
+    throw new Error("Só é possível designar comprador para uma solicitação aprovada.");
+  }
+  if (solicitacao.compradorId !== null) {
+    throw new Error("Essa solicitação já tem um comprador designado.");
+  }
+
+  const comprador = await getDb().usuario.findUnique({ where: { id: compradorId } });
+  if (!comprador) {
+    throw new Error("Comprador inválido.");
+  }
+
+  // O `where` reconfirma status ainda aprovado e compradorId ainda nulo —
+  // protege contra duas designações concorrentes (manual e automática, ou
+  // duas manuais ao mesmo tempo) sobrescrevendo uma à outra.
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: StatusSolicitacao.APROVADO, compradorId: null },
+    data: { compradorId },
+  });
+  if (count === 0) {
+    throw new Error(
+      "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+    );
+  }
+
+  await registrarHistorico(
+    id,
+    "comprador_designado",
+    atorId,
+    `Designado manualmente pelo Financeiro: ${comprador.nome}.`
+  );
+  await notificarComprador(solicitacao, comprador);
+
+  return { ...solicitacao, compradorId };
+}
+
+export async function listarPendentesDesignacaoComprador() {
+  return getDb().solicitacao.findMany({
+    where: { status: StatusSolicitacao.APROVADO, compradorId: null },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
+}
+
 // Shared by enviarSolicitacao (RASCUNHO → ...) and reenviarSolicitacao
 // (REJEITADO → ...) — both re-run the exact same resolution (auto-skip,
 // alçada) from scratch, not resuming from wherever the request stopped
@@ -377,6 +526,8 @@ async function processarEnvio(
     });
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
+  } else if (resolucao.status === StatusSolicitacao.APROVADO) {
+    await designarComprador(solicitacao);
   }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -452,6 +603,7 @@ export async function aprovarNivel1(id: string, atorId: string) {
   // diretor, que agora tem uma aprovação de fato pendente.
   if (resolucao.status === StatusSolicitacao.APROVADO) {
     await notificarSolicitanteAprovado(solicitacao);
+    await designarComprador(solicitacao);
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
   }
@@ -487,6 +639,7 @@ export async function aprovarNivel2(id: string, atorId: string) {
   await registrarHistorico(id, "aprovado", atorId);
 
   await notificarSolicitanteAprovado(solicitacao);
+  await designarComprador(solicitacao);
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }

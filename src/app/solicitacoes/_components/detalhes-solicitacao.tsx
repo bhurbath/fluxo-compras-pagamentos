@@ -100,6 +100,12 @@ export function DetalhesSolicitacao({
           <dd>{solicitacao.motivoRejeicao}</dd>
         </div>
       )}
+      {solicitacao.comprador && (
+        <div>
+          <dt className="text-sm text-gray-600">Comprador</dt>
+          <dd>{solicitacao.comprador.nome}</dd>
+        </div>
+      )}
     </dl>
   );
 }

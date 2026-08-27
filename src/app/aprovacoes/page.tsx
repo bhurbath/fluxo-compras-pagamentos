@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { listarPendentesNivel1, listarPendentesNivel2 } from "@/lib/workflow";
+import {
+  listarPendentesDesignacaoComprador,
+  listarPendentesNivel1,
+  listarPendentesNivel2,
+} from "@/lib/workflow";
 import { formatarReais } from "@/lib/format";
 
 type Pendente = Awaited<ReturnType<typeof listarPendentesNivel1>>[number];
@@ -62,6 +66,9 @@ export default async function AprovacoesPage() {
     listarPendentesNivel1(usuario.id),
     listarPendentesNivel2(usuario.id),
   ]);
+  const pendentesDesignacaoComprador = usuario.flagFinanceiro
+    ? await listarPendentesDesignacaoComprador()
+    : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-4 p-6">
@@ -79,6 +86,14 @@ export default async function AprovacoesPage() {
           itens={pendentesNivel2}
           vazioMensagem="Nenhuma solicitação aguardando sua aprovação de nível 2."
         />
+
+        {pendentesDesignacaoComprador && (
+          <TabelaPendentes
+            titulo="Designação de comprador (Financeiro)"
+            itens={pendentesDesignacaoComprador}
+            vazioMensagem="Nenhuma solicitação aguardando designação de comprador."
+          />
+        )}
 
         <Link href="/" className="underline">
           Voltar
