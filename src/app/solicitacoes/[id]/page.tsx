@@ -2,10 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { StatusSolicitacao } from "@prisma/client";
 import { aprovarNivel1Action, rejeitarAction } from "@/app/aprovacoes/actions";
+import { editarEReenviarAction } from "../actions";
+import { CamposSolicitacao } from "../_components/campos-solicitacao";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import { obterSolicitacao } from "@/lib/workflow";
 import { formatarReais } from "@/lib/format";
+import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 
 const STATUS_LEGIVEL: Record<string, string> = {
   RASCUNHO: "Rascunho",
@@ -58,6 +61,15 @@ export default async function SolicitacaoDetalhePage({
   const podeAprovarNivel1 =
     solicitacao.status === StatusSolicitacao.ENVIADO &&
     solicitacao.departamento.responsavelId === usuario.id;
+
+  const podeEditarEReenviar =
+    solicitacao.status === StatusSolicitacao.REJEITADO &&
+    solicitacao.solicitanteId === usuario.id;
+
+  // Só busca as listas dos dropdowns quando a seção de edição vai
+  // efetivamente aparecer — evita 6 consultas desnecessárias em toda
+  // visualização de uma solicitação que não está rejeitada.
+  const listasParaEdicao = podeEditarEReenviar ? await listarListasSolicitacao() : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
@@ -168,6 +180,40 @@ export default async function SolicitacaoDetalhePage({
               </label>
               <button type="submit" className="rounded border px-4 py-2">
                 Rejeitar
+              </button>
+            </form>
+          </div>
+        )}
+
+        {listasParaEdicao && (
+          <div className="flex flex-col gap-3 rounded border p-4">
+            <h2 className="font-semibold">Editar e reenviar</h2>
+            <form
+              action={editarEReenviarAction.bind(null, solicitacao.id)}
+              className="flex flex-col gap-3"
+            >
+              <CamposSolicitacao
+                defaultValues={{
+                  descricao: solicitacao.descricao,
+                  valor: solicitacao.valor.toString(),
+                  departamentoId: solicitacao.departamentoId,
+                  tipoCompraId: solicitacao.tipoCompraId,
+                  fornecedor: solicitacao.fornecedor,
+                  formaPagamento: solicitacao.formaPagamento,
+                  centroCustoId: solicitacao.centroCustoId,
+                  centroResultadoId: solicitacao.centroResultadoId,
+                  contaContabilId: solicitacao.contaContabilId,
+                  empresaId: solicitacao.empresaId,
+                  linkCompra: solicitacao.linkCompra,
+                  informacoesComplementares: solicitacao.informacoesComplementares,
+                }}
+                {...listasParaEdicao}
+              />
+              <button
+                type="submit"
+                className="rounded bg-blue-600 px-4 py-2 text-white"
+              >
+                Salvar e reenviar
               </button>
             </form>
           </div>

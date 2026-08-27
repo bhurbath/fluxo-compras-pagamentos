@@ -78,31 +78,81 @@ async function registrarHistorico(
   });
 }
 
+// The fields both criarSolicitacao and editarSolicitacao write — everything
+// about "the request" except who made it and what status it's in, which
+// each of those two functions owns differently (create sets both fresh;
+// edit changes neither).
+function mapCamposSolicitacao(input: CriarSolicitacaoInput) {
+  return {
+    departamentoId: input.departamentoId,
+    tipoCompraId: input.tipoCompraId,
+    descricao: input.descricao.trim(),
+    valor: input.valor,
+    fornecedor: input.fornecedor.trim(),
+    formaPagamento: input.formaPagamento,
+    centroCustoId: input.centroCustoId,
+    centroResultadoId: input.centroResultadoId,
+    contaContabilId: input.contaContabilId,
+    empresaId: input.empresaId,
+    linkCompra: input.linkCompra?.trim() || null,
+    informacoesComplementares: input.informacoesComplementares?.trim() || null,
+  };
+}
+
 export async function criarSolicitacao(input: CriarSolicitacaoInput) {
   validarCriarSolicitacao(input);
 
   const solicitacao = await getDb().solicitacao.create({
     data: {
       solicitanteId: input.solicitanteId,
-      departamentoId: input.departamentoId,
-      tipoCompraId: input.tipoCompraId,
-      descricao: input.descricao.trim(),
-      valor: input.valor,
       status: StatusSolicitacao.RASCUNHO,
-      fornecedor: input.fornecedor.trim(),
-      formaPagamento: input.formaPagamento,
-      centroCustoId: input.centroCustoId,
-      centroResultadoId: input.centroResultadoId,
-      contaContabilId: input.contaContabilId,
-      empresaId: input.empresaId,
-      linkCompra: input.linkCompra?.trim() || null,
-      informacoesComplementares: input.informacoesComplementares?.trim() || null,
+      ...mapCamposSolicitacao(input),
     },
   });
 
   await registrarHistorico(solicitacao.id, "rascunho_criado", input.solicitanteId);
 
   return solicitacao;
+}
+
+export async function editarSolicitacao(
+  id: string,
+  atorId: string,
+  input: CriarSolicitacaoInput
+) {
+  validarCriarSolicitacao(input);
+
+  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  // Ownership antes do status: assim quem não é o solicitante sempre recebe
+  // o mesmo erro de permissão, sem dar pra distinguir pelo texto se o id
+  // existe nem em qual status ele está.
+  if (atorId !== solicitacao.solicitanteId) {
+    throw new Error("Só o solicitante pode editar essa solicitação.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.REJEITADO) {
+    throw new Error("Só é possível editar uma solicitação que foi rejeitada.");
+  }
+
+  // input.solicitanteId é ignorado de propósito — editar corrige os campos
+  // do pedido, não pode trocar quem é o dono dele. motivoRejeicao também
+  // não é tocado aqui: ele continua visível até o reenvio de fato acontecer
+  // (ver reenviarSolicitacao), não antes disso ter sido confirmado.
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: StatusSolicitacao.REJEITADO },
+    data: mapCamposSolicitacao(input),
+  });
+  if (count === 0) {
+    throw new Error(
+      "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+    );
+  }
+
+  await registrarHistorico(id, "editado_apos_rejeicao", atorId);
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
 // Looks up which faixa de alçada covers `valor` (both bounds inclusive,
@@ -202,7 +252,18 @@ async function resolverEstadoInicial(solicitacao: {
   };
 }
 
-export async function enviarSolicitacao(id: string) {
+// Shared by enviarSolicitacao (RASCUNHO → ...) and reenviarSolicitacao
+// (REJEITADO → ...) — both re-run the exact same resolution (auto-skip,
+// alçada) from scratch, not resuming from wherever the request stopped
+// last time. They differ only in which status they start from, what the
+// "arrived at ENVIADO" história event is called, and the error message for
+// an invalid starting status.
+async function processarEnvio(
+  id: string,
+  statusOrigem: typeof StatusSolicitacao.RASCUNHO | typeof StatusSolicitacao.REJEITADO,
+  eventoEnvio: string,
+  mensagemStatusInvalido: string
+) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
     include: { departamento: { include: { responsavel: true } }, solicitante: true },
@@ -210,20 +271,35 @@ export async function enviarSolicitacao(id: string) {
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
-  if (solicitacao.status !== StatusSolicitacao.RASCUNHO) {
-    throw new Error("Só é possível enviar uma solicitação que está em rascunho.");
+  if (solicitacao.status !== statusOrigem) {
+    throw new Error(mensagemStatusInvalido);
   }
 
   const resolucao = await resolverEstadoInicial(solicitacao);
 
-  const atualizada = await getDb().solicitacao.update({
-    where: { id },
-    data: { status: resolucao.status },
+  // O `where` reconfirma o status de origem, não só o id — mesma proteção
+  // contra ações concorrentes que aprovarNivel1/rejeitar já usam, para não
+  // deixar dois cliques em "Enviar"/"Reenviar" processarem o mesmo envio
+  // duas vezes.
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: statusOrigem },
+    data: {
+      status: resolucao.status,
+      // Só faz diferença vindo de REJEITADO (de RASCUNHO já é null) — limpa
+      // o motivo antigo atomicamente junto com a transição de status, nunca
+      // antes disso ter de fato acontecido.
+      motivoRejeicao: null,
+    },
   });
+  if (count === 0) {
+    throw new Error(
+      "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+    );
+  }
 
   await registrarHistorico(
     id,
-    resolucao.evento,
+    resolucao.status === StatusSolicitacao.ENVIADO ? eventoEnvio : resolucao.evento,
     solicitacao.solicitanteId,
     resolucao.detalhe
   );
@@ -250,7 +326,25 @@ export async function enviarSolicitacao(id: string) {
     });
   }
 
-  return atualizada;
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function enviarSolicitacao(id: string) {
+  return processarEnvio(
+    id,
+    StatusSolicitacao.RASCUNHO,
+    "enviado",
+    "Só é possível enviar uma solicitação que está em rascunho."
+  );
+}
+
+export async function reenviarSolicitacao(id: string) {
+  return processarEnvio(
+    id,
+    StatusSolicitacao.REJEITADO,
+    "reenviado",
+    "Só é possível reenviar uma solicitação que foi rejeitada."
+  );
 }
 
 export async function listarPendentesNivel1(responsavelId: string) {

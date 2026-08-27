@@ -10,6 +10,11 @@ export default defineConfig({
     // TRUNCATE race another file's in-flight assertions against the same
     // tables, so file-level parallelism has to stay off.
     fileParallelism: false,
+    // Every assertion hits a real Postgres instance over a pooler, not a
+    // mock — tests chaining several workflow calls (e.g. reject → edit →
+    // resend) routinely take longer than Vitest's 5s default under normal
+    // network latency, with no actual hang involved.
+    testTimeout: 15000,
   },
   resolve: {
     alias: {

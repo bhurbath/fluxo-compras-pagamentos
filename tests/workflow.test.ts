@@ -5,9 +5,12 @@ import type { EmailMessage } from "@/lib/email";
 import {
   aprovarNivel1,
   criarSolicitacao,
+  editarSolicitacao,
   enviarSolicitacao,
   listarPendentesNivel1,
+  reenviarSolicitacao,
   rejeitar,
+  type CriarSolicitacaoInput,
 } from "@/lib/workflow";
 
 class FakeEmailSender {
@@ -106,6 +109,43 @@ async function criarSolicitacaoEnviada(
   });
   const solicitacao = await enviarSolicitacao(rascunho.id);
   return { solicitacao, departamento, solicitante };
+}
+
+// Builds on criarSolicitacaoEnviada by also rejecting it — the starting
+// point every editarSolicitacao/reenvio test needs.
+async function criarSolicitacaoRejeitada(sufixo: string) {
+  const { solicitacao, departamento, solicitante } = await criarSolicitacaoEnviada(sufixo);
+  const rejeitada = await rejeitar(
+    solicitacao.id,
+    departamento.responsavelId,
+    "Motivo original de teste"
+  );
+  return { solicitacao: rejeitada, departamento, solicitante };
+}
+
+// Reuses every field already on a solicitação as the base for an edit call
+// — most editarSolicitacao tests only care about changing one or two
+// fields, not retyping the whole shape each time.
+function construirInputEdicao(
+  solicitacao: Awaited<ReturnType<typeof criarSolicitacaoRejeitada>>["solicitacao"],
+  overrides: Partial<CriarSolicitacaoInput> = {}
+): CriarSolicitacaoInput {
+  return {
+    solicitanteId: solicitacao.solicitanteId,
+    departamentoId: solicitacao.departamentoId,
+    tipoCompraId: solicitacao.tipoCompraId,
+    descricao: solicitacao.descricao,
+    valor: solicitacao.valor.toString(),
+    fornecedor: solicitacao.fornecedor,
+    formaPagamento: solicitacao.formaPagamento,
+    centroCustoId: solicitacao.centroCustoId,
+    centroResultadoId: solicitacao.centroResultadoId,
+    contaContabilId: solicitacao.contaContabilId,
+    empresaId: solicitacao.empresaId,
+    linkCompra: solicitacao.linkCompra,
+    informacoesComplementares: solicitacao.informacoesComplementares,
+    ...overrides,
+  };
 }
 
 describe("workflow: criarSolicitacao", () => {
@@ -677,23 +717,233 @@ describe("workflow: listarPendentesNivel1", () => {
     expect(pendentes.map((s) => s.id).sort()).toEqual([s1.id, s2.id].sort());
   });
 
-  it(
-    "não lista solicitações de outro departamento nem que já saíram de ENVIADO",
-    async () => {
-      await criarFaixa("0", "1000", false);
-      const { departamento } = await criarSolicitacaoEnviada("l2");
-      // De outro departamento, com outro responsável.
-      await criarSolicitacaoEnviada("l2-outro");
-      // Do mesmo departamento, mas já aprovada — não deve mais aparecer.
-      const { solicitacao: aprovada } = await criarSolicitacaoEnviada("l2-aprovada", {
-        responsavelId: departamento.responsavelId,
-      });
-      await aprovarNivel1(aprovada.id, departamento.responsavelId);
+  it("não lista solicitações de outro departamento nem que já saíram de ENVIADO", async () => {
+    await criarFaixa("0", "1000", false);
+    const { departamento } = await criarSolicitacaoEnviada("l2");
+    // De outro departamento, com outro responsável.
+    await criarSolicitacaoEnviada("l2-outro");
+    // Do mesmo departamento, mas já aprovada — não deve mais aparecer.
+    const { solicitacao: aprovada } = await criarSolicitacaoEnviada("l2-aprovada", {
+      responsavelId: departamento.responsavelId,
+    });
+    await aprovarNivel1(aprovada.id, departamento.responsavelId);
 
-      const pendentes = await listarPendentesNivel1(departamento.responsavelId);
+    const pendentes = await listarPendentesNivel1(departamento.responsavelId);
 
-      expect(pendentes).toHaveLength(1);
-    },
-    15000
-  );
+    expect(pendentes).toHaveLength(1);
+  });
+});
+
+describe("workflow: editarSolicitacao", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("edita os campos de uma solicitação rejeitada", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("e1");
+    const novoTipo = await criarTipoCompra("Novo tipo e1");
+
+    const editada = await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, {
+        tipoCompraId: novoTipo.id,
+        descricao: "Descrição corrigida",
+        valor: "600",
+      })
+    );
+
+    expect(editada.descricao).toBe("Descrição corrigida");
+    expect(editada.valor.toString()).toBe("600");
+    expect(editada.tipoCompraId).toBe(novoTipo.id);
+    expect(editada.status).toBe("REJEITADO");
+  });
+
+  it("mantém o motivo da rejeição visível depois de editar, antes do reenvio", async () => {
+    // motivoRejeicao só é limpo quando o reenvio de fato acontece (ver
+    // reenviarSolicitacao) — se ele sumisse aqui, um reenvio que falhasse
+    // logo em seguida deixaria a solicitação sem nenhum motivo visível na
+    // tela, mesmo continuando REJEITADO.
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("e2");
+    expect(solicitacao.motivoRejeicao).not.toBeNull();
+
+    const editada = await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao)
+    );
+
+    expect(editada.motivoRejeicao).toBe("Motivo original de teste");
+  });
+
+  it("lança erro se a solicitação não está rejeitada", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("e3");
+
+    await expect(
+      editarSolicitacao(
+        solicitacao.id,
+        solicitante.id,
+        construirInputEdicao(solicitacao, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem edita não é o solicitante", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao } = await criarSolicitacaoRejeitada("e4");
+    const intruso = await criarUsuario("intruso-e4");
+
+    await expect(
+      editarSolicitacao(
+        solicitacao.id,
+        intruso.id,
+        construirInputEdicao(solicitacao, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao editar", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("e5");
+
+    await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Descrição corrigida" })
+    );
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "rejeitado",
+      "editado_apos_rejeicao",
+    ]);
+  });
+});
+
+describe("workflow: reenviarSolicitacao", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("reenvia uma solicitação rejeitada e reinicia o fluxo a partir do nível 1", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("v1");
+    await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Corrigido" })
+    );
+
+    const reenviada = await reenviarSolicitacao(solicitacao.id);
+
+    expect(reenviada.status).toBe("ENVIADO");
+  });
+
+  it("limpa o motivo da rejeição da solicitação ao reenviar, mas mantém visível no histórico", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("v2");
+    await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Corrigido" })
+    );
+
+    const reenviada = await reenviarSolicitacao(solicitacao.id);
+
+    expect(reenviada.motivoRejeicao).toBeNull();
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "rejeitado",
+      "editado_apos_rejeicao",
+      "reenviado",
+    ]);
+    const eventoRejeicao = historico.find((h) => h.evento === "rejeitado");
+    expect(eventoRejeicao?.detalhe).toBe("Motivo original de teste");
+  });
+
+  it("mantém o motivo da rejeição visível se o reenvio falhar depois da edição", async () => {
+    // Regressão: motivoRejeicao não pode ser limpo em editarSolicitacao —
+    // só quando o reenvio de fato é confirmado. Aqui a edição sobe o valor
+    // para uma faixa sem alçada cadastrada, então reenviarSolicitacao
+    // lança e a solicitação continua REJEITADO com o motivo original ainda
+    // visível, não silenciosamente vazio.
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("v3");
+
+    await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { valor: "999999" })
+    );
+
+    await expect(reenviarSolicitacao(solicitacao.id)).rejects.toThrow(/faixa de alçada/);
+
+    const atual = await testDb.solicitacao.findUniqueOrThrow({ where: { id: solicitacao.id } });
+    expect(atual.status).toBe("REJEITADO");
+    expect(atual.motivoRejeicao).toBe("Motivo original de teste");
+  });
+
+  it("aplica auto-skip normalmente também no reenvio (solicitante é o responsável)", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, departamento, solicitante } = await criarSolicitacaoRejeitada("v4");
+    await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Corrigido" })
+    );
+    // Simula o solicitante virando responsável do próprio departamento antes
+    // do reenvio, para exercitar o mesmo auto-skip que o envio original já
+    // tem — resolverEstadoInicial roda do zero a cada reenvio, não retoma
+    // de onde a rejeição parou.
+    await testDb.departamento.update({
+      where: { id: departamento.id },
+      data: { responsavelId: solicitante.id },
+    });
+
+    const reenviada = await reenviarSolicitacao(solicitacao.id);
+
+    expect(reenviada.status).toBe("APROVADO");
+  });
+
+  it("lança erro ao tentar reenviar uma solicitação que não está rejeitada", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, departamento } = await criarSolicitacaoEnviada("v5");
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    await expect(reenviarSolicitacao(solicitacao.id)).rejects.toThrow();
+  });
+
+  it("lança erro ao tentar reenviar uma solicitação que ainda é rascunho", async () => {
+    await criarFaixa("0", "1000", false);
+    const solicitante = await criarUsuario("sol-v6");
+    const departamento = await criarDepartamento("v6");
+    const tipo = await criarTipoCompra("Tipo v6");
+    const campos = await criarCamposObrigatorios("v6");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+
+    await expect(reenviarSolicitacao(rascunho.id)).rejects.toThrow();
+  });
 });

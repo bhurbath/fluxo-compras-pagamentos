@@ -1,19 +1,9 @@
 import { redirect } from "next/navigation";
 import { criarEEnviarAction, criarRascunhoAction } from "../actions";
+import { CamposSolicitacao } from "../_components/campos-solicitacao";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { listarDepartamentos } from "@/lib/departamentos";
-import { listarTiposCompra } from "@/lib/tipos-compra";
-import { listarCentrosCusto } from "@/lib/centro-custo";
-import { listarCentrosResultado } from "@/lib/centro-resultado";
-import { listarContasContabeis } from "@/lib/conta-contabil";
-import { listarEmpresas } from "@/lib/empresa";
-
-const FORMAS_PAGAMENTO = [
-  { value: "ADIANTAMENTO", label: "Adiantamento" },
-  { value: "A_VISTA", label: "À vista" },
-  { value: "PARCELADO", label: "Parcelado" },
-];
+import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 
 export default async function NovaSolicitacaoPage({
   searchParams,
@@ -26,15 +16,7 @@ export default async function NovaSolicitacaoPage({
   }
 
   const { erro } = await searchParams;
-  const [departamentos, tiposCompra, centrosCusto, centrosResultado, contasContabeis, empresas] =
-    await Promise.all([
-      listarDepartamentos(),
-      listarTiposCompra(),
-      listarCentrosCusto(),
-      listarCentrosResultado(),
-      listarContasContabeis(),
-      listarEmpresas(),
-    ]);
+  const listas = await listarListasSolicitacao();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
@@ -44,161 +26,10 @@ export default async function NovaSolicitacaoPage({
         <ErroMensagem erro={erro} />
 
         <form className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            Descrição
-            <textarea
-              name="descricao"
-              required
-              className="rounded border px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            Valor (R$)
-            <input
-              name="valor"
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              className="rounded border px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            Departamento
-            <select
-              name="departamentoId"
-              defaultValue={usuario.departamentoId ?? ""}
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {departamentos.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Tipo de compra
-            <select
-              name="tipoCompraId"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {tiposCompra.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Fornecedor
-            <input
-              name="fornecedor"
-              type="text"
-              required
-              className="rounded border px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            Forma de pagamento
-            <select
-              name="formaPagamento"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {FORMAS_PAGAMENTO.map((f) => (
-                <option key={f.value} value={f.value}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Centro de custo
-            <select
-              name="centroCustoId"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {centrosCusto.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Centro de resultado
-            <select
-              name="centroResultadoId"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {centrosResultado.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Conta contábil
-            <select
-              name="contaContabilId"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {contasContabeis.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Empresa
-            <select
-              name="empresaId"
-              defaultValue=""
-              required
-              className="rounded border px-2 py-1"
-            >
-              <option value="">Selecione</option>
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nome}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            Link da compra (opcional)
-            <input
-              name="linkCompra"
-              type="text"
-              className="rounded border px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            Informações complementares (opcional)
-            <textarea
-              name="informacoesComplementares"
-              className="rounded border px-2 py-1"
-            />
-          </label>
+          <CamposSolicitacao
+            defaultValues={{ departamentoId: usuario.departamentoId ?? "" }}
+            {...listas}
+          />
           <div className="flex gap-3">
             <button
               type="submit"

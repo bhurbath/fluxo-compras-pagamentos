@@ -7,7 +7,9 @@ import { toFriendlyError } from "@/lib/prisma-errors";
 import { exigirTodos, lerCampos } from "@/lib/form-helpers";
 import {
   criarSolicitacao,
+  editarSolicitacao,
   enviarSolicitacao,
+  reenviarSolicitacao,
   type CriarSolicitacaoInput,
 } from "@/lib/workflow";
 import { FormaPagamento, type Usuario } from "@prisma/client";
@@ -86,5 +88,24 @@ export const criarEEnviarAction = comUsuarioAutenticado(
     }
 
     redirect(`/solicitacoes/${solicitacao.id}`);
+  }
+);
+
+export const editarEReenviarAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    try {
+      const input = parseSolicitacaoForm(usuario, formData);
+      await editarSolicitacao(id, usuario.id, input);
+      await reenviarSolicitacao(id);
+    } catch (error) {
+      // Diferente de criarEEnviarAction, aqui não existe risco de órfão: o
+      // id já existe antes da chamada, então qualquer falha (na edição ou
+      // no reenvio) sempre pode voltar para a própria página da solicitação
+      // — o pior caso é ela ficar com os campos editados mas ainda
+      // REJEITADO, o que é perfeitamente reenviável de novo.
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
   }
 );
