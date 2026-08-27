@@ -5,14 +5,17 @@ import { comUsuarioAutenticado } from "@/lib/require-usuario";
 import { redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
 import { exigirTodos, lerCampos } from "@/lib/form-helpers";
+import { uploadAnexo } from "@/lib/storage";
 import {
+  confirmarCompra,
   criarSolicitacao,
   editarSolicitacao,
+  enviarParaPagamento,
   enviarSolicitacao,
   reenviarSolicitacao,
   type CriarSolicitacaoInput,
 } from "@/lib/workflow";
-import { FormaPagamento, type Usuario } from "@prisma/client";
+import { FormaPagamento, MetodoPagamento, type Usuario } from "@prisma/client";
 
 function parseSolicitacaoForm(
   usuario: Usuario,
@@ -103,6 +106,53 @@ export const editarEReenviarAction = comUsuarioAutenticado(
       // no reenvio) sempre pode voltar para a própria página da solicitação
       // — o pior caso é ela ficar com os campos editados mas ainda
       // REJEITADO, o que é perfeitamente reenviável de novo.
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const confirmarCompraAction = comUsuarioAutenticado(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await confirmarCompra(id, usuario.id);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const enviarParaPagamentoAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    const campos = lerCampos(formData, [
+      "metodoPagamento",
+      "dadosPagamento",
+      "fornecedorDocumento",
+    ]);
+    exigirTodos(
+      campos,
+      "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios."
+    );
+
+    // Arquivo, não texto — lerCampos (que faz String(...)) não serve aqui.
+    const notaFiscal = formData.get("notaFiscal");
+    if (!(notaFiscal instanceof File) || notaFiscal.size === 0) {
+      redirectComErro(`/solicitacoes/${id}`, "A nota fiscal/comprovante da compra é obrigatória.");
+    }
+
+    try {
+      const notaFiscalUrl = await uploadAnexo(notaFiscal, id);
+      await enviarParaPagamento(id, usuario.id, {
+        notaFiscalUrl,
+        metodoPagamento: campos.metodoPagamento as MetodoPagamento,
+        dadosPagamento: campos.dadosPagamento,
+        fornecedorDocumento: campos.fornecedorDocumento,
+      });
+    } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }
 

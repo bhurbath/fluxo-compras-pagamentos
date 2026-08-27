@@ -5,9 +5,11 @@ import type { EmailMessage } from "@/lib/email";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  confirmarCompra,
   criarSolicitacao,
   designarCompradorManualmente,
   editarSolicitacao,
+  enviarParaPagamento,
   enviarSolicitacao,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
@@ -152,6 +154,19 @@ async function criarSolicitacaoAprovada(sufixo: string) {
   await criarFaixa("0", null, false);
   const { solicitacao, departamento } = await criarSolicitacaoEnviada(sufixo);
   return aprovarNivel1(solicitacao.id, departamento.responsavelId);
+}
+
+// Creates a full solicitação already in APROVADO with a comprador already
+// designated (via matriz) — the starting point every
+// confirmarCompra/enviarParaPagamento test needs.
+async function criarSolicitacaoComCompradorDesignado(sufixo: string) {
+  const { enviada, departamento, comprador } =
+    await criarSolicitacaoEnviadaComEntradaMatriz(sufixo);
+  const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+  const solicitante = await testDb.usuario.findUniqueOrThrow({
+    where: { id: aprovada.solicitanteId },
+  });
+  return { solicitacao: aprovada, comprador, solicitante };
 }
 
 async function criarEntradaMatriz(
@@ -1381,5 +1396,218 @@ describe("workflow: listarPendentesDesignacaoComprador", () => {
     const pendentes = await listarPendentesDesignacaoComprador();
 
     expect(pendentes).toHaveLength(0);
+  });
+});
+
+describe("workflow: confirmarCompra", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("confirma a compra e transiciona para COMPRA_CONFIRMADA", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("cc1");
+
+    const confirmada = await confirmarCompra(solicitacao.id, comprador.id);
+
+    expect(confirmada.status).toBe("COMPRA_CONFIRMADA");
+  });
+
+  it("lança erro se quem confirma não é o comprador designado", async () => {
+    const { solicitacao } = await criarSolicitacaoComCompradorDesignado("cc2");
+    const outro = await criarUsuario("outro-cc2");
+
+    await expect(confirmarCompra(solicitacao.id, outro.id)).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aprovada", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("cc3");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await expect(confirmarCompra(solicitacao.id, comprador.id)).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao confirmar a compra", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("cc4");
+
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("compra_confirmada");
+    expect(historico.at(-1)?.atorId).toBe(comprador.id);
+  });
+
+  it("notifica o solicitante por e-mail", async () => {
+    const { solicitacao, comprador, solicitante } =
+      await criarSolicitacaoComCompradorDesignado("cc5");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
+  });
+});
+
+// Input válido para enviarParaPagamento — a maioria dos testes só quer
+// passar pela validação dos campos obrigatórios sem testar essa validação em
+// si; os testes que testam essa validação sobrescrevem um campo por vez.
+const INPUT_PAGAMENTO_VALIDO = {
+  notaFiscalUrl: "sol-teste/1700000000000-nota-fiscal.pdf",
+  metodoPagamento: "PIX" as const,
+  dadosPagamento: "Chave PIX: 12345678900",
+  fornecedorDocumento: "12.345.678/0001-99",
+};
+
+describe("workflow: enviarParaPagamento", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("envia para pagamento e transiciona para AGUARDANDO_PAGAMENTO", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep1");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const enviada = await enviarParaPagamento(
+      solicitacao.id,
+      comprador.id,
+      INPUT_PAGAMENTO_VALIDO
+    );
+
+    expect(enviada.status).toBe("AGUARDANDO_PAGAMENTO");
+  });
+
+  it("grava nota fiscal, método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep1b");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const enviada = await enviarParaPagamento(
+      solicitacao.id,
+      comprador.id,
+      INPUT_PAGAMENTO_VALIDO
+    );
+
+    expect(enviada.notaFiscalUrl).toBe(INPUT_PAGAMENTO_VALIDO.notaFiscalUrl);
+    expect(enviada.metodoPagamento).toBe("PIX");
+    expect(enviada.dadosPagamento).toBe(INPUT_PAGAMENTO_VALIDO.dadosPagamento);
+    expect(enviada.fornecedorDocumento).toBe(INPUT_PAGAMENTO_VALIDO.fornecedorDocumento);
+  });
+
+  it("lança erro se a nota fiscal não for informada", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep2");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, {
+        ...INPUT_PAGAMENTO_VALIDO,
+        notaFiscalUrl: "  ",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem envia não é o comprador designado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep3");
+    await confirmarCompra(solicitacao.id, comprador.id);
+    const outro = await criarUsuario("outro-ep3");
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, outro.id, INPUT_PAGAMENTO_VALIDO)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a compra ainda não foi confirmada", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep4");
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se o método de pagamento não for informado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep4b");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, {
+        ...INPUT_PAGAMENTO_VALIDO,
+        metodoPagamento: "" as never,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se os dados de pagamento não forem informados", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep4c");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, {
+        ...INPUT_PAGAMENTO_VALIDO,
+        dadosPagamento: "  ",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se o CNPJ/CPF do fornecedor não for informado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep4d");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, {
+        ...INPUT_PAGAMENTO_VALIDO,
+        fornecedorDocumento: "  ",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao enviar para pagamento", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep5");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    await enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("enviado_para_pagamento");
+    expect(historico.at(-1)?.atorId).toBe(comprador.id);
+  });
+
+  it("notifica o solicitante e todo o Financeiro por e-mail", async () => {
+    const { solicitacao, comprador, solicitante } =
+      await criarSolicitacaoComCompradorDesignado("ep6");
+    await confirmarCompra(solicitacao.id, comprador.id);
+    const financeiro1 = await criarUsuario("fin1-ep6");
+    const financeiro2 = await criarUsuario("fin2-ep6");
+    await testDb.usuario.updateMany({
+      where: { id: { in: [financeiro1.id, financeiro2.id] } },
+      data: { flagFinanceiro: true },
+    });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: financeiro1.email })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: financeiro2.email })
+    );
   });
 });

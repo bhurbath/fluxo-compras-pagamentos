@@ -1,5 +1,6 @@
 import { formatarReais } from "@/lib/format";
 import type { obterSolicitacao } from "@/lib/workflow";
+import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 
 const STATUS_LEGIVEL: Record<string, string> = {
   RASCUNHO: "Rascunho",
@@ -21,8 +22,14 @@ const FORMA_PAGAMENTO_LEGIVEL: Record<string, string> = {
 
 export function DetalhesSolicitacao({
   solicitacao,
+  notaFiscalUrlAssinada,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
+  // URL temporária (Supabase Storage é privado) para baixar o anexo, gerada
+  // pelo Server Component pai a partir de solicitacao.notaFiscalUrl (que
+  // guarda um caminho no bucket, não uma URL utilizável diretamente) — ver
+  // src/lib/storage.ts. null quando não há anexo ou a URL não pôde ser gerada.
+  notaFiscalUrlAssinada?: string | null;
 }) {
   return (
     <dl className="flex flex-col gap-2">
@@ -104,6 +111,46 @@ export function DetalhesSolicitacao({
         <div>
           <dt className="text-sm text-gray-600">Comprador</dt>
           <dd>{solicitacao.comprador.nome}</dd>
+        </div>
+      )}
+      {solicitacao.notaFiscalUrl && (
+        <div>
+          <dt className="text-sm text-gray-600">Nota fiscal/comprovante</dt>
+          <dd>
+            {notaFiscalUrlAssinada ? (
+              <a
+                href={notaFiscalUrlAssinada}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Baixar anexo
+              </a>
+            ) : (
+              "Link indisponível no momento — atualize a página."
+            )}
+          </dd>
+        </div>
+      )}
+      {solicitacao.fornecedorDocumento && (
+        <div>
+          <dt className="text-sm text-gray-600">CNPJ/CPF do fornecedor</dt>
+          <dd>{solicitacao.fornecedorDocumento}</dd>
+        </div>
+      )}
+      {solicitacao.metodoPagamento && (
+        <div>
+          <dt className="text-sm text-gray-600">Método de pagamento</dt>
+          <dd>
+            {METODO_PAGAMENTO_LEGIVEL[solicitacao.metodoPagamento] ??
+              solicitacao.metodoPagamento}
+          </dd>
+        </div>
+      )}
+      {solicitacao.dadosPagamento && (
+        <div>
+          <dt className="text-sm text-gray-600">Dados de pagamento</dt>
+          <dd>{solicitacao.dadosPagamento}</dd>
         </div>
       )}
     </dl>

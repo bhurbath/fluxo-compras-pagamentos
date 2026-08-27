@@ -2,7 +2,7 @@ import { getDb } from "@/lib/db";
 import { paraDecimal } from "@/lib/decimal";
 import { getEmailSender } from "@/lib/email";
 import { formatarReais } from "@/lib/format";
-import { FormaPagamento, Prisma, StatusSolicitacao } from "@prisma/client";
+import { FormaPagamento, MetodoPagamento, Prisma, StatusSolicitacao } from "@prisma/client";
 
 export async function obterSolicitacao(id: string) {
   return getDb().solicitacao.findUnique({
@@ -325,21 +325,20 @@ async function notificarComprador(
 
 // "Atribuída ao Financeiro" não é um único dono — Financeiro é uma flag em
 // Usuario, não uma pessoa — então isso avisa todo mundo que tem a flag.
-async function notificarTodosFinanceiros(solicitacao: {
-  descricao: string;
-  valor: Prisma.Decimal;
-}): Promise<void> {
+// `montarHtml` fica a cargo de cada chamador porque o conteúdo muda conforme
+// o motivo do aviso (designação pendente, pagamento pendente, ...); só o
+// "buscar todo mundo com a flag e mandar em paralelo" é compartilhado.
+async function notificarTodosFinanceiros(
+  assunto: string,
+  montarHtml: (financeiro: { nome: string }) => string
+): Promise<void> {
   const financeiros = await getDb().usuario.findMany({ where: { flagFinanceiro: true } });
   await Promise.all(
     financeiros.map((f) =>
       getEmailSender().send({
         to: f.email,
-        subject: "Solicitação aguardando designação de comprador",
-        html:
-          `<p>Olá, ${f.nome}.</p>` +
-          `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-          "foi aprovada, mas não há um comprador cadastrado na matriz para essa combinação " +
-          "de departamento e tipo de compra. Designe um comprador manualmente.</p>",
+        subject: assunto,
+        html: montarHtml(f),
       })
     )
   );
@@ -394,7 +393,14 @@ async function designarComprador(solicitacao: {
     null,
     "Nenhuma combinação encontrada na matriz de comprador — aguardando designação manual pelo Financeiro."
   );
-  await notificarTodosFinanceiros(solicitacao);
+  await notificarTodosFinanceiros(
+    "Solicitação aguardando designação de comprador",
+    (f) =>
+      `<p>Olá, ${f.nome}.</p>` +
+      `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+      "foi aprovada, mas não há um comprador cadastrado na matriz para essa combinação " +
+      "de departamento e tipo de compra. Designe um comprador manualmente.</p>"
+  );
 }
 
 export async function designarCompradorManualmente(
@@ -701,6 +707,136 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
       "foi rejeitada.</p>" +
       `<p>Motivo: ${motivoTrim}</p>`,
   });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function confirmarCompra(id: string, atorId: string) {
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: { solicitante: true },
+  });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (atorId !== solicitacao.compradorId) {
+    throw new Error("Só o comprador designado pode confirmar essa compra.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.APROVADO) {
+    throw new Error("Só é possível confirmar a compra de uma solicitação aprovada.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.APROVADO,
+    { status: StatusSolicitacao.COMPRA_CONFIRMADA },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "compra_confirmada", atorId);
+
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Compra confirmada",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>A compra da sua solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) foi confirmada. Em breve o pagamento será processado.</p>`,
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export type EnviarParaPagamentoInput = {
+  // Caminho do arquivo no bucket de Storage (ver src/lib/storage.ts), não uma
+  // URL pública — o bucket é privado, então quem exibe o anexo precisa gerar
+  // uma URL assinada a partir desse caminho na hora de renderizar.
+  notaFiscalUrl: string;
+  metodoPagamento: MetodoPagamento;
+  dadosPagamento: string;
+  fornecedorDocumento: string;
+};
+
+// Anexar a nota fiscal e enviar para pagamento viraram um único passo
+// atômico (não duas funções separadas) depois que a revisão do ticket 10
+// apontou que, na prática, a UI sempre envia os dois juntos — mantê-los
+// separados só criava uma janela de corrida (a escrita da nota fiscal não
+// tinha guarda de concorrência, diferente de toda outra mutação neste
+// arquivo) e um estado parcial possível (nota fiscal anexada, envio ainda
+// não confirmado) sem trazer benefício real, já que não existe hoje nenhum
+// fluxo que anexe a nota fiscal sem também enviar para pagamento em seguida.
+// O upload em si (validação de formato, envio ao Storage) já aconteceu antes
+// desta função ser chamada — ver uploadAnexo em src/lib/storage.ts — então
+// aqui só resta confirmar que um caminho de fato chegou.
+export async function enviarParaPagamento(
+  id: string,
+  atorId: string,
+  input: EnviarParaPagamentoInput
+) {
+  const notaFiscalUrlTrim = input.notaFiscalUrl.trim();
+  const dadosPagamentoTrim = input.dadosPagamento.trim();
+  const fornecedorDocumentoTrim = input.fornecedorDocumento.trim();
+  if (!notaFiscalUrlTrim) {
+    throw new Error("A nota fiscal/comprovante da compra é obrigatória.");
+  }
+  if (!Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
+    throw new Error("O método de pagamento é obrigatório.");
+  }
+  if (!dadosPagamentoTrim) {
+    throw new Error("Os dados de pagamento são obrigatórios.");
+  }
+  if (!fornecedorDocumentoTrim) {
+    throw new Error("O CNPJ/CPF do fornecedor é obrigatório.");
+  }
+
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: { solicitante: true },
+  });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (atorId !== solicitacao.compradorId) {
+    throw new Error("Só o comprador designado pode enviar essa solicitação para pagamento.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.COMPRA_CONFIRMADA) {
+    throw new Error(
+      "Só é possível enviar para pagamento uma solicitação com a compra confirmada."
+    );
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.COMPRA_CONFIRMADA,
+    {
+      status: StatusSolicitacao.AGUARDANDO_PAGAMENTO,
+      notaFiscalUrl: notaFiscalUrlTrim,
+      metodoPagamento: input.metodoPagamento,
+      dadosPagamento: dadosPagamentoTrim,
+      fornecedorDocumento: fornecedorDocumentoTrim,
+    },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "enviado_para_pagamento", atorId);
+
+  await Promise.all([
+    getEmailSender().send({
+      to: solicitacao.solicitante.email,
+      subject: "Solicitação de compra enviada para pagamento",
+      html:
+        `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+        `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+        "foi enviada ao Financeiro para pagamento.</p>",
+    }),
+    notificarTodosFinanceiros(
+      "Solicitação de compra aguardando pagamento",
+      (f) =>
+        `<p>Olá, ${f.nome}.</p>` +
+        `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+        "teve a compra confirmada e a nota fiscal anexada, e está aguardando o processamento do pagamento.</p>"
+    ),
+  ]);
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }

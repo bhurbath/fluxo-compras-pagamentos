@@ -7,16 +7,23 @@ import {
   designarCompradorManualmenteAction,
   rejeitarAction,
 } from "@/app/aprovacoes/actions";
-import { editarEReenviarAction } from "../actions";
+import {
+  confirmarCompraAction,
+  editarEReenviarAction,
+  enviarParaPagamentoAction,
+} from "../actions";
 import { DetalhesSolicitacao } from "../_components/detalhes-solicitacao";
 import { PainelAprovacao } from "../_components/painel-aprovacao";
 import { PainelEdicaoReenvio } from "../_components/painel-edicao-reenvio";
 import { PainelDesignacaoComprador } from "../_components/painel-designacao-comprador";
+import { PainelConfirmarCompra } from "../_components/painel-confirmar-compra";
+import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import { obterSolicitacao } from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
+import { gerarUrlAssinada } from "@/lib/storage";
 
 export default async function SolicitacaoDetalhePage({
   params,
@@ -35,16 +42,15 @@ export default async function SolicitacaoDetalhePage({
   const solicitacao = await obterSolicitacao(id);
 
   // The solicitante can always view their own request. The department's
-  // responsável (nível 1) or diretor (nível 2) can view it too, but only
-  // once it has actually been submitted — not a draft the solicitante
-  // hasn't sent for approval yet. Financeiro can view any submitted request
-  // too, matching their oversight/admin role. A later ticket (comprador)
-  // will broaden this further once that role is built.
+  // responsável (nível 1), diretor (nível 2), the designated comprador, or
+  // Financeiro can view it too, but only once it has actually been
+  // submitted — not a draft the solicitante hasn't sent for approval yet.
   const podeVer =
     solicitacao !== null &&
     (solicitacao.solicitanteId === usuario.id ||
       ((solicitacao.departamento.responsavelId === usuario.id ||
         solicitacao.departamento.diretorId === usuario.id ||
+        solicitacao.compradorId === usuario.id ||
         usuario.flagFinanceiro) &&
         solicitacao.status !== StatusSolicitacao.RASCUNHO));
   if (!solicitacao || !podeVer) {
@@ -68,12 +74,24 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.compradorId === null &&
     usuario.flagFinanceiro;
 
+  const podeConfirmarCompra =
+    solicitacao.status === StatusSolicitacao.APROVADO &&
+    solicitacao.compradorId === usuario.id;
+
+  const podeEnviarParaPagamento =
+    solicitacao.status === StatusSolicitacao.COMPRA_CONFIRMADA &&
+    solicitacao.compradorId === usuario.id;
+
   // Só busca as listas dos dropdowns quando a seção de edição vai
   // efetivamente aparecer — evita 6 consultas desnecessárias em toda
   // visualização de uma solicitação que não está rejeitada.
   const listasParaEdicao = podeEditarEReenviar ? await listarListasSolicitacao() : null;
 
   const funcionarios = podeDesignarComprador ? await listarFuncionarios() : null;
+
+  const notaFiscalUrlAssinada = solicitacao.notaFiscalUrl
+    ? await gerarUrlAssinada(solicitacao.notaFiscalUrl)
+    : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
@@ -82,7 +100,10 @@ export default async function SolicitacaoDetalhePage({
 
         <ErroMensagem erro={erro} />
 
-        <DetalhesSolicitacao solicitacao={solicitacao} />
+        <DetalhesSolicitacao
+          solicitacao={solicitacao}
+          notaFiscalUrlAssinada={notaFiscalUrlAssinada}
+        />
 
         {podeAprovarNivel1 && (
           <PainelAprovacao
@@ -115,6 +136,20 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             funcionarios={funcionarios}
             action={designarCompradorManualmenteAction}
+          />
+        )}
+
+        {podeConfirmarCompra && (
+          <PainelConfirmarCompra
+            solicitacaoId={solicitacao.id}
+            action={confirmarCompraAction}
+          />
+        )}
+
+        {podeEnviarParaPagamento && (
+          <PainelEnviarPagamento
+            solicitacaoId={solicitacao.id}
+            action={enviarParaPagamentoAction}
           />
         )}
 

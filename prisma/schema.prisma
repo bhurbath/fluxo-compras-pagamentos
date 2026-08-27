@@ -166,6 +166,18 @@ enum FormaPagamento {
   PARCELADO
 }
 
+// Como o pagamento em si vai ser feito (ticket 10, preenchido pelo
+// comprador ao enviar para pagamento) — diferente de FormaPagamento, que são
+// as condições comerciais (adiantamento/à vista/parcelado) escolhidas pelo
+// solicitante na criação.
+enum MetodoPagamento {
+  PIX
+  TED
+  BOLETO
+  CARTAO_CREDITO
+  DINHEIRO
+}
+
 // Ticket 05: the state machine driving the whole approval/purchase/payment
 // flow. See src/lib/workflow.ts — every transition is a function there, not
 // a status update scattered across callers. Not every state is reachable
@@ -213,8 +225,11 @@ model Solicitacao {
   // nullable because they don't exist until the solicitação reaches that
   // point in the flow.
   compradorId             String?
-  comprador               Usuario? @relation("SolicitacoesCompradas", fields: [compradorId], references: [id])
+  comprador               Usuario?         @relation("SolicitacoesCompradas", fields: [compradorId], references: [id])
   notaFiscalUrl           String?
+  fornecedorDocumento     String?
+  metodoPagamento         MetodoPagamento?
+  dadosPagamento          String?
   comprovantePagamentoUrl String?
   motivoRejeicao          String?
 
