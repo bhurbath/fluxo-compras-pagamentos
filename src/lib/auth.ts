@@ -16,6 +16,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID,
       clientSecret: process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
       issuer: tenantId && `https://login.microsoftonline.com/${tenantId}/v2.0`,
+      // Without this, Entra silently reuses whatever Microsoft account
+      // already has an active session in the browser instead of asking —
+      // so a second person (or a "sign in as someone else" test) on a
+      // browser already signed into Entra can't reach the account picker.
+      authorization: { params: { prompt: "select_account" } },
     }),
   ],
   session: { strategy: "jwt" },

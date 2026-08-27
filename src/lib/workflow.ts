@@ -135,13 +135,29 @@ type ResultadoResolucao = {
   detalhe?: string;
 };
 
+type ResolucaoPosNivel1 = {
+  status: typeof StatusSolicitacao.APROVADO | typeof StatusSolicitacao.AGUARDANDO_NIVEL2;
+  evento: "aprovado" | "aguardando_nivel2";
+};
+
+// Shared by the submission-time auto-skip (resolverEstadoInicial, below) and
+// the real nível-1 approval (aprovarNivel1) — both need the exact same
+// "does this land on AGUARDANDO_NIVEL2 or skip straight to APROVADO" rule;
+// only the detalhe wording they attach differs per call site.
+function decidirStatusPosNivel1(exigeNivel2: boolean, pulaNivel2: boolean): ResolucaoPosNivel1 {
+  if (!exigeNivel2 || pulaNivel2) {
+    return { status: StatusSolicitacao.APROVADO, evento: "aprovado" };
+  }
+  return { status: StatusSolicitacao.AGUARDANDO_NIVEL2, evento: "aguardando_nivel2" };
+}
+
 // Applies the auto-approval rule at every level a fresh submission could
 // land on, in one pass — not just level 1. If level 1 is skipped (solicitante
 // is the responsável) and the alçada requires level 2, level 2 is checked
 // too (solicitante is the diretor), so a request never lands on
 // AGUARDANDO_NIVEL2 waiting on an approver who can't approve their own
-// request. aprovarNivel1 (a later ticket) re-applies the level-2 check on
-// its own path into AGUARDANDO_NIVEL2 — this only covers the submission path.
+// request. aprovarNivel1 re-applies the level-2 check on its own path into
+// AGUARDANDO_NIVEL2 — this only covers the submission path.
 async function resolverEstadoInicial(solicitacao: {
   solicitanteId: string;
   valor: Prisma.Decimal;
@@ -149,11 +165,11 @@ async function resolverEstadoInicial(solicitacao: {
 }): Promise<ResultadoResolucao> {
   const pulaNivel1 = solicitacao.solicitanteId === solicitacao.departamento.responsavelId;
   if (!pulaNivel1) {
-    // A decisão de nível 2 só é tomada quando o nível 1 aprova (ticket
-    // futuro), mas o valor ainda precisa cair dentro de alguma faixa
-    // cadastrada agora — senão o gap de configuração só apareceria bem mais
-    // tarde, na aprovação, em vez de no envio. O booleano retornado aqui não
-    // importa, só o efeito colateral de lançar quando nenhuma faixa cobre.
+    // A decisão de nível 2 só é tomada quando o nível 1 aprova, mas o valor
+    // ainda precisa cair dentro de alguma faixa cadastrada agora — senão o
+    // gap de configuração só apareceria bem mais tarde, na aprovação, em vez
+    // de no envio. O booleano retornado aqui não importa, só o efeito
+    // colateral de lançar quando nenhuma faixa cobre.
     await resolverExigeNivel2(solicitacao.valor);
     return { status: StatusSolicitacao.ENVIADO, evento: "enviado" };
   }
@@ -161,8 +177,7 @@ async function resolverEstadoInicial(solicitacao: {
   const exigeNivel2 = await resolverExigeNivel2(solicitacao.valor);
   if (!exigeNivel2) {
     return {
-      status: StatusSolicitacao.APROVADO,
-      evento: "aprovado",
+      ...decidirStatusPosNivel1(exigeNivel2, false),
       detalhe:
         "Aprovação de nível 1 pulada automaticamente (solicitante é o responsável " +
         "do departamento); a alçada não exige aprovação de nível 2.",
@@ -172,8 +187,7 @@ async function resolverEstadoInicial(solicitacao: {
   const pulaNivel2 = solicitacao.solicitanteId === solicitacao.departamento.diretorId;
   if (pulaNivel2) {
     return {
-      status: StatusSolicitacao.APROVADO,
-      evento: "aprovado",
+      ...decidirStatusPosNivel1(exigeNivel2, pulaNivel2),
       detalhe:
         "Aprovação de nível 1 e de nível 2 puladas automaticamente (solicitante " +
         "é responsável e diretor do departamento).",
@@ -181,8 +195,7 @@ async function resolverEstadoInicial(solicitacao: {
   }
 
   return {
-    status: StatusSolicitacao.AGUARDANDO_NIVEL2,
-    evento: "aguardando_nivel2",
+    ...decidirStatusPosNivel1(exigeNivel2, pulaNivel2),
     detalhe:
       "Aprovação de nível 1 pulada automaticamente (solicitante é o responsável " +
       "do departamento).",
@@ -192,7 +205,7 @@ async function resolverEstadoInicial(solicitacao: {
 export async function enviarSolicitacao(id: string) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: true, solicitante: true },
+    include: { departamento: { include: { responsavel: true } }, solicitante: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -224,5 +237,142 @@ export async function enviarSolicitacao(id: string) {
       "foi enviada com sucesso e está em análise.</p>",
   });
 
+  // Só o caminho ENVIADO deixa uma aprovação de nível 1 de fato pendente —
+  // os caminhos de auto-aprovação não têm ninguém esperando para agir.
+  if (resolucao.status === StatusSolicitacao.ENVIADO) {
+    await getEmailSender().send({
+      to: solicitacao.departamento.responsavel.email,
+      subject: "Nova solicitação de compra aguardando sua aprovação",
+      html:
+        `<p>Olá, ${solicitacao.departamento.responsavel.nome}.</p>` +
+        `<p>${solicitacao.solicitante.nome} enviou a solicitação "${solicitacao.descricao}" ` +
+        `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>`,
+    });
+  }
+
   return atualizada;
+}
+
+export async function listarPendentesNivel1(responsavelId: string) {
+  return getDb().solicitacao.findMany({
+    where: {
+      status: StatusSolicitacao.ENVIADO,
+      departamento: { responsavelId },
+    },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
+}
+
+export async function aprovarNivel1(id: string, atorId: string) {
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: { departamento: true, solicitante: true },
+  });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.ENVIADO) {
+    throw new Error(
+      "Só é possível aprovar uma solicitação que está aguardando aprovação de nível 1."
+    );
+  }
+  if (atorId !== solicitacao.departamento.responsavelId) {
+    throw new Error("Só o responsável do departamento pode aprovar essa solicitação.");
+  }
+
+  const exigeNivel2 = await resolverExigeNivel2(solicitacao.valor);
+  const pulaNivel2 = solicitacao.solicitanteId === solicitacao.departamento.diretorId;
+  const resolucao = decidirStatusPosNivel1(exigeNivel2, pulaNivel2);
+  const detalhe =
+    exigeNivel2 && pulaNivel2
+      ? "Aprovação de nível 2 pulada automaticamente (solicitante é o diretor do departamento)."
+      : undefined;
+
+  // O `where` com status (em vez de só `id`) protege contra duas ações
+  // concorrentes (ex: aprovar e rejeitar quase ao mesmo tempo) decidindo a
+  // mesma solicitação — só uma delas encontra a linha ainda em ENVIADO.
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: StatusSolicitacao.ENVIADO },
+    data: { status: resolucao.status },
+  });
+  if (count === 0) {
+    throw new Error(
+      "Essa solicitação já foi decidida por outra ação e não está mais aguardando " +
+        "aprovação de nível 1."
+    );
+  }
+
+  await registrarHistorico(id, resolucao.evento, atorId, detalhe);
+
+  // Assim como no envio, só a aprovação final notifica o solicitante — se a
+  // solicitação foi para AGUARDANDO_NIVEL2, ela ainda não chegou a um
+  // desfecho para ele saber.
+  if (resolucao.status === StatusSolicitacao.APROVADO) {
+    await getEmailSender().send({
+      to: solicitacao.solicitante.email,
+      subject: "Solicitação de compra aprovada",
+      html:
+        `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+        `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+        "foi aprovada.</p>",
+    });
+  }
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function rejeitar(id: string, atorId: string, motivo: string) {
+  const motivoTrim = motivo.trim();
+  if (!motivoTrim) {
+    throw new Error("O motivo da rejeição é obrigatório.");
+  }
+
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: { departamento: true, solicitante: true },
+  });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+
+  // Rejeitado é alcançável a partir de qualquer nível de aprovação pendente
+  // — o aprovador esperado muda conforme em qual nível a solicitação está.
+  const aprovadorPorStatus: Partial<Record<StatusSolicitacao, string>> = {
+    [StatusSolicitacao.ENVIADO]: solicitacao.departamento.responsavelId,
+    [StatusSolicitacao.AGUARDANDO_NIVEL2]: solicitacao.departamento.diretorId,
+  };
+  const aprovadorEsperado = aprovadorPorStatus[solicitacao.status];
+  if (!aprovadorEsperado) {
+    throw new Error("Só é possível rejeitar uma solicitação que está aguardando aprovação.");
+  }
+  if (atorId !== aprovadorEsperado) {
+    throw new Error("Você não tem permissão para rejeitar essa solicitação.");
+  }
+
+  // Mesma proteção contra ações concorrentes que aprovarNivel1: o `where`
+  // reconfirma o status que já foi lido acima, não só o id.
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: solicitacao.status },
+    data: { status: StatusSolicitacao.REJEITADO, motivoRejeicao: motivoTrim },
+  });
+  if (count === 0) {
+    throw new Error(
+      "Essa solicitação já foi decidida por outra ação e não está mais aguardando aprovação."
+    );
+  }
+
+  await registrarHistorico(id, "rejeitado", atorId, motivoTrim);
+
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Solicitação de compra rejeitada",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+      "foi rejeitada.</p>" +
+      `<p>Motivo: ${motivoTrim}</p>`,
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }

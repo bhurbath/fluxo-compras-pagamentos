@@ -18,6 +18,9 @@ export default async function Home() {
           >
             Nova solicitação de compra
           </Link>
+          <Link href="/aprovacoes" className="underline">
+            Aprovações pendentes
+          </Link>
           <form
             action={async () => {
               "use server";
