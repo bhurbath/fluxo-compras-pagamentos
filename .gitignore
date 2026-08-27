@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — .env.example is the committed template SETUP.md points to;
+# every other .env* (the real secrets) stays local-only.
 .env*
+!.env.example
 
 # vercel
 .vercel
