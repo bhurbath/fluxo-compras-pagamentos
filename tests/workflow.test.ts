@@ -4,10 +4,12 @@ import { setEmailSender } from "@/lib/email";
 import type { EmailMessage } from "@/lib/email";
 import {
   aprovarNivel1,
+  aprovarNivel2,
   criarSolicitacao,
   editarSolicitacao,
   enviarSolicitacao,
   listarPendentesNivel1,
+  listarPendentesNivel2,
   reenviarSolicitacao,
   rejeitar,
   type CriarSolicitacaoInput,
@@ -121,6 +123,22 @@ async function criarSolicitacaoRejeitada(sufixo: string) {
     "Motivo original de teste"
   );
   return { solicitacao: rejeitada, departamento, solicitante };
+}
+
+// Creates a full solicitação already in AGUARDANDO_NIVEL2 — the starting
+// point every aprovarNivel2/listarPendentesNivel2 test needs. Uses a fixed
+// alçada (valores acima de 1000 exigem nível 2) since no test needs a
+// different threshold, and goes through aprovarNivel1 for real rather than
+// faking the status directly.
+async function criarSolicitacaoAguardandoNivel2(sufixo: string, diretorId?: string) {
+  await criarFaixa("0", "1000", false);
+  await criarFaixa("1000.01", null, true);
+  const { solicitacao, departamento, solicitante } = await criarSolicitacaoEnviada(sufixo, {
+    diretorId,
+    valor: "5000",
+  });
+  const aguardando = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+  return { solicitacao: aguardando, departamento, solicitante };
 }
 
 // Reuses every field already on a solicitação as the base for an edit call
@@ -314,6 +332,33 @@ describe("workflow: enviarSolicitacao", () => {
     const enviada = await enviarSolicitacao(rascunho.id);
 
     expect(enviada.status).toBe("AGUARDANDO_NIVEL2");
+  });
+
+  it("notifica o diretor por e-mail quando o envio pula direto para AGUARDANDO_NIVEL2", async () => {
+    const enviarSpy = vi.spyOn(fake, "send");
+    const responsavel = await criarUsuario("resp-dir");
+    const departamento = await criarDepartamento("mkt-dir", { responsavelId: responsavel.id });
+    const diretor = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.diretorId },
+    });
+    const tipo = await criarTipoCompra("Mercado Livre");
+    const campos = await criarCamposObrigatorios();
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const rascunho = await criarSolicitacao({
+      solicitanteId: responsavel.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de servidores",
+      valor: "5000",
+      ...campos,
+    });
+
+    await enviarSolicitacao(rascunho.id);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: diretor.email })
+    );
   });
 
   it("pula os dois níveis e vai direto para APROVADO quando o solicitante é responsável e diretor ao mesmo tempo", async () => {
@@ -522,6 +567,23 @@ describe("workflow: aprovarNivel1", () => {
     expect(aprovada.status).toBe("AGUARDANDO_NIVEL2");
   });
 
+  it("notifica o diretor por e-mail quando a aprovação de nível 1 avança para nível 2", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao, departamento } = await criarSolicitacaoEnviada("a2b", { valor: "5000" });
+    const diretor = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.diretorId },
+    });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: diretor.email })
+    );
+  });
+
   it("pula nível 2 e vai direto para APROVADO quando o solicitante é o diretor do departamento", async () => {
     const diretor = await criarUsuario("dir-a3");
     await criarFaixa("0", "1000", false);
@@ -587,15 +649,22 @@ describe("workflow: aprovarNivel1", () => {
   });
 
   it("não notifica o solicitante quando a aprovação só avança para nível 2", async () => {
+    // O diretor é notificado nesse caso (ver o teste "notifica o diretor..."
+    // acima) — só o solicitante não deve ser, já que a decisão ainda não
+    // chegou a um desfecho para ele.
     await criarFaixa("0", "1000", false);
     await criarFaixa("1000.01", null, true);
-    const { solicitacao, departamento } = await criarSolicitacaoEnviada("a8", { valor: "5000" });
+    const { solicitacao, departamento, solicitante } = await criarSolicitacaoEnviada("a8", {
+      valor: "5000",
+    });
     const enviarSpy = vi.spyOn(fake, "send");
     enviarSpy.mockClear();
 
     await aprovarNivel1(solicitacao.id, departamento.responsavelId);
 
-    expect(enviarSpy).not.toHaveBeenCalled();
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
   });
 });
 
@@ -945,5 +1014,99 @@ describe("workflow: reenviarSolicitacao", () => {
     });
 
     await expect(reenviarSolicitacao(rascunho.id)).rejects.toThrow();
+  });
+});
+
+describe("workflow: aprovarNivel2", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("aprova e vai direto para APROVADO", async () => {
+    const { solicitacao, departamento } = await criarSolicitacaoAguardandoNivel2("n1");
+
+    const aprovada = await aprovarNivel2(solicitacao.id, departamento.diretorId);
+
+    expect(aprovada.status).toBe("APROVADO");
+  });
+
+  it("lança erro se quem aprova não é o diretor do departamento", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoNivel2("n2");
+    const intruso = await criarUsuario("intruso-n2");
+
+    await expect(aprovarNivel2(solicitacao.id, intruso.id)).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aguardando aprovação de nível 2", async () => {
+    const { solicitacao, departamento } = await criarSolicitacaoAguardandoNivel2("n3");
+    await aprovarNivel2(solicitacao.id, departamento.diretorId);
+
+    await expect(aprovarNivel2(solicitacao.id, departamento.diretorId)).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao aprovar", async () => {
+    const { solicitacao, departamento } = await criarSolicitacaoAguardandoNivel2("n4");
+
+    await aprovarNivel2(solicitacao.id, departamento.diretorId);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "aguardando_nivel2",
+      "aprovado",
+    ]);
+  });
+
+  it("notifica o solicitante por e-mail ao aprovar", async () => {
+    const { solicitacao, departamento, solicitante } =
+      await criarSolicitacaoAguardandoNivel2("n5");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await aprovarNivel2(solicitacao.id, departamento.diretorId);
+
+    expect(enviarSpy).toHaveBeenCalledTimes(1);
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
+  });
+});
+
+describe("workflow: listarPendentesNivel2", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações AGUARDANDO_NIVEL2 do departamento onde o usuário é diretor", async () => {
+    const { solicitacao, departamento } = await criarSolicitacaoAguardandoNivel2("d1");
+
+    const pendentes = await listarPendentesNivel2(departamento.diretorId);
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("não lista solicitações de outro departamento nem que já saíram de AGUARDANDO_NIVEL2", async () => {
+    const { departamento } = await criarSolicitacaoAguardandoNivel2("d2");
+    // De outro departamento, com outro diretor.
+    await criarSolicitacaoAguardandoNivel2("d2-outro");
+    // Do mesmo departamento, mas já aprovada — não deve mais aparecer.
+    const { solicitacao: aprovada } = await criarSolicitacaoAguardandoNivel2(
+      "d2-aprovada",
+      departamento.diretorId
+    );
+    await aprovarNivel2(aprovada.id, departamento.diretorId);
+
+    const pendentes = await listarPendentesNivel2(departamento.diretorId);
+
+    expect(pendentes).toHaveLength(1);
   });
 });

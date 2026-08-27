@@ -78,6 +78,26 @@ async function registrarHistorico(
   });
 }
 
+// Shared by every transition that mutates status (processarEnvio,
+// aprovarNivel1, aprovarNivel2, rejeitar) — the `where` reconfirms the
+// expected starting status, not just `id`, so two concurrent actions on the
+// same solicitação (e.g. aprovar and rejeitar firing close together) can't
+// both succeed; only the one that still finds the row in that status does.
+async function atualizarStatusComGuarda(
+  id: string,
+  statusEsperado: StatusSolicitacao,
+  data: Prisma.SolicitacaoUpdateManyMutationInput,
+  mensagemConflito: string
+): Promise<void> {
+  const { count } = await getDb().solicitacao.updateMany({
+    where: { id, status: statusEsperado },
+    data,
+  });
+  if (count === 0) {
+    throw new Error(mensagemConflito);
+  }
+}
+
 // The fields both criarSolicitacao and editarSolicitacao write — everything
 // about "the request" except who made it and what status it's in, which
 // each of those two functions owns differently (create sets both fresh;
@@ -140,15 +160,12 @@ export async function editarSolicitacao(
   // do pedido, não pode trocar quem é o dono dele. motivoRejeicao também
   // não é tocado aqui: ele continua visível até o reenvio de fato acontecer
   // (ver reenviarSolicitacao), não antes disso ter sido confirmado.
-  const { count } = await getDb().solicitacao.updateMany({
-    where: { id, status: StatusSolicitacao.REJEITADO },
-    data: mapCamposSolicitacao(input),
-  });
-  if (count === 0) {
-    throw new Error(
-      "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
-    );
-  }
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.REJEITADO,
+    mapCamposSolicitacao(input),
+    "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
 
   await registrarHistorico(id, "editado_apos_rejeicao", atorId);
 
@@ -252,6 +269,43 @@ async function resolverEstadoInicial(solicitacao: {
   };
 }
 
+// Shared by processarEnvio's auto-skip-to-nível-2 path and aprovarNivel1's
+// real approval path — both are the only two places a solicitação can
+// arrive at AGUARDANDO_NIVEL2, and the diretor only needs to hear about it
+// once it's actually their turn, not on every submission.
+async function notificarDiretorPendente(solicitacao: {
+  descricao: string;
+  valor: Prisma.Decimal;
+  solicitante: { nome: string };
+  departamento: { diretor: { email: string; nome: string } };
+}): Promise<void> {
+  await getEmailSender().send({
+    to: solicitacao.departamento.diretor.email,
+    subject: "Solicitação de compra aguardando sua aprovação",
+    html:
+      `<p>Olá, ${solicitacao.departamento.diretor.nome}.</p>` +
+      `<p>${solicitacao.solicitante.nome} enviou a solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>`,
+  });
+}
+
+// Shared by aprovarNivel1's and aprovarNivel2's final-approval outcome —
+// the only two places a solicitação reaches APROVADO.
+async function notificarSolicitanteAprovado(solicitacao: {
+  descricao: string;
+  valor: Prisma.Decimal;
+  solicitante: { email: string; nome: string };
+}): Promise<void> {
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Solicitação de compra aprovada",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+      "foi aprovada.</p>",
+  });
+}
+
 // Shared by enviarSolicitacao (RASCUNHO → ...) and reenviarSolicitacao
 // (REJEITADO → ...) — both re-run the exact same resolution (auto-skip,
 // alçada) from scratch, not resuming from wherever the request stopped
@@ -266,7 +320,10 @@ async function processarEnvio(
 ) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: { include: { responsavel: true } }, solicitante: true },
+    include: {
+      departamento: { include: { responsavel: true, diretor: true } },
+      solicitante: true,
+    },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -277,25 +334,18 @@ async function processarEnvio(
 
   const resolucao = await resolverEstadoInicial(solicitacao);
 
-  // O `where` reconfirma o status de origem, não só o id — mesma proteção
-  // contra ações concorrentes que aprovarNivel1/rejeitar já usam, para não
-  // deixar dois cliques em "Enviar"/"Reenviar" processarem o mesmo envio
-  // duas vezes.
-  const { count } = await getDb().solicitacao.updateMany({
-    where: { id, status: statusOrigem },
-    data: {
+  await atualizarStatusComGuarda(
+    id,
+    statusOrigem,
+    {
       status: resolucao.status,
       // Só faz diferença vindo de REJEITADO (de RASCUNHO já é null) — limpa
       // o motivo antigo atomicamente junto com a transição de status, nunca
       // antes disso ter de fato acontecido.
       motivoRejeicao: null,
     },
-  });
-  if (count === 0) {
-    throw new Error(
-      "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
-    );
-  }
+    "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
 
   await registrarHistorico(
     id,
@@ -313,8 +363,9 @@ async function processarEnvio(
       "foi enviada com sucesso e está em análise.</p>",
   });
 
-  // Só o caminho ENVIADO deixa uma aprovação de nível 1 de fato pendente —
-  // os caminhos de auto-aprovação não têm ninguém esperando para agir.
+  // Só os caminhos ENVIADO/AGUARDANDO_NIVEL2 deixam uma aprovação de fato
+  // pendente — os caminhos de auto-aprovação não têm ninguém esperando
+  // para agir.
   if (resolucao.status === StatusSolicitacao.ENVIADO) {
     await getEmailSender().send({
       to: solicitacao.departamento.responsavel.email,
@@ -324,6 +375,8 @@ async function processarEnvio(
         `<p>${solicitacao.solicitante.nome} enviou a solicitação "${solicitacao.descricao}" ` +
         `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>`,
     });
+  } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
+    await notificarDiretorPendente(solicitacao);
   }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -361,7 +414,7 @@ export async function listarPendentesNivel1(responsavelId: string) {
 export async function aprovarNivel1(id: string, atorId: string) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: true, solicitante: true },
+    include: { departamento: { include: { diretor: true } }, solicitante: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -383,37 +436,70 @@ export async function aprovarNivel1(id: string, atorId: string) {
       ? "Aprovação de nível 2 pulada automaticamente (solicitante é o diretor do departamento)."
       : undefined;
 
-  // O `where` com status (em vez de só `id`) protege contra duas ações
-  // concorrentes (ex: aprovar e rejeitar quase ao mesmo tempo) decidindo a
-  // mesma solicitação — só uma delas encontra a linha ainda em ENVIADO.
-  const { count } = await getDb().solicitacao.updateMany({
-    where: { id, status: StatusSolicitacao.ENVIADO },
-    data: { status: resolucao.status },
-  });
-  if (count === 0) {
-    throw new Error(
-      "Essa solicitação já foi decidida por outra ação e não está mais aguardando " +
-        "aprovação de nível 1."
-    );
-  }
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.ENVIADO,
+    { status: resolucao.status },
+    "Essa solicitação já foi decidida por outra ação e não está mais aguardando " +
+      "aprovação de nível 1."
+  );
 
   await registrarHistorico(id, resolucao.evento, atorId, detalhe);
 
   // Assim como no envio, só a aprovação final notifica o solicitante — se a
   // solicitação foi para AGUARDANDO_NIVEL2, ela ainda não chegou a um
-  // desfecho para ele saber.
+  // desfecho para ele saber; nesse caso quem precisa ser avisado é o
+  // diretor, que agora tem uma aprovação de fato pendente.
   if (resolucao.status === StatusSolicitacao.APROVADO) {
-    await getEmailSender().send({
-      to: solicitacao.solicitante.email,
-      subject: "Solicitação de compra aprovada",
-      html:
-        `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
-        `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "foi aprovada.</p>",
-    });
+    await notificarSolicitanteAprovado(solicitacao);
+  } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
+    await notificarDiretorPendente(solicitacao);
   }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function aprovarNivel2(id: string, atorId: string) {
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: { departamento: true, solicitante: true },
+  });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_NIVEL2) {
+    throw new Error(
+      "Só é possível aprovar uma solicitação que está aguardando aprovação de nível 2."
+    );
+  }
+  if (atorId !== solicitacao.departamento.diretorId) {
+    throw new Error("Só o diretor do departamento pode aprovar essa solicitação.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_NIVEL2,
+    { status: StatusSolicitacao.APROVADO },
+    "Essa solicitação já foi decidida por outra ação e não está mais aguardando " +
+      "aprovação de nível 2."
+  );
+
+  await registrarHistorico(id, "aprovado", atorId);
+
+  await notificarSolicitanteAprovado(solicitacao);
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function listarPendentesNivel2(diretorId: string) {
+  return getDb().solicitacao.findMany({
+    where: {
+      status: StatusSolicitacao.AGUARDANDO_NIVEL2,
+      departamento: { diretorId },
+    },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
 }
 
 export async function rejeitar(id: string, atorId: string, motivo: string) {
@@ -444,17 +530,12 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
     throw new Error("Você não tem permissão para rejeitar essa solicitação.");
   }
 
-  // Mesma proteção contra ações concorrentes que aprovarNivel1: o `where`
-  // reconfirma o status que já foi lido acima, não só o id.
-  const { count } = await getDb().solicitacao.updateMany({
-    where: { id, status: solicitacao.status },
-    data: { status: StatusSolicitacao.REJEITADO, motivoRejeicao: motivoTrim },
-  });
-  if (count === 0) {
-    throw new Error(
-      "Essa solicitação já foi decidida por outra ação e não está mais aguardando aprovação."
-    );
-  }
+  await atualizarStatusComGuarda(
+    id,
+    solicitacao.status,
+    { status: StatusSolicitacao.REJEITADO, motivoRejeicao: motivoTrim },
+    "Essa solicitação já foi decidida por outra ação e não está mais aguardando aprovação."
+  );
 
   await registrarHistorico(id, "rejeitado", atorId, motivoTrim);
 
