@@ -80,10 +80,16 @@ async function registrarHistorico(
 }
 
 // Shared by every transition that mutates status (processarEnvio,
-// aprovarNivel1, aprovarNivel2, rejeitar) — the `where` reconfirms the
+// aprovarNivel1, aprovarNivel2, rejeitar, ...) — the `where` reconfirms the
 // expected starting status, not just `id`, so two concurrent actions on the
 // same solicitação (e.g. aprovar and rejeitar firing close together) can't
 // both succeed; only the one that still finds the row in that status does.
+// Reachable from more than one starting status? Give each origin its own
+// exported wrapper around a shared internal helper (ex: enviarSolicitacao/
+// reenviarSolicitacao via processarEnvio, ou enviarParaPagamento/
+// reenviarParaPagamento via processarEnvioPagamento) instead of widening
+// statusEsperado here — a single expected status per call is the guard's
+// whole point.
 async function atualizarStatusComGuarda(
   id: string,
   statusEsperado: StatusSolicitacao,
@@ -403,15 +409,24 @@ async function designarComprador(solicitacao: {
   );
 }
 
+// Compartilhado por toda transição restrita ao Financeiro que só recebe um
+// atorId (não o Usuario já carregado) — designarCompradorManualmente,
+// recusarPagamento, registrarPagamento. A mensagem de erro fica a cargo de
+// quem chama porque cada ação descreve o que especificamente foi negado.
+async function requireFinanceiroAtor(atorId: string, mensagemErro: string) {
+  const ator = await getDb().usuario.findUnique({ where: { id: atorId } });
+  if (!ator?.flagFinanceiro) {
+    throw new Error(mensagemErro);
+  }
+  return ator;
+}
+
 export async function designarCompradorManualmente(
   id: string,
   atorId: string,
   compradorId: string
 ) {
-  const ator = await getDb().usuario.findUnique({ where: { id: atorId } });
-  if (!ator?.flagFinanceiro) {
-    throw new Error("Só o Financeiro pode designar um comprador manualmente.");
-  }
+  await requireFinanceiroAtor(atorId, "Só o Financeiro pode designar um comprador manualmente.");
 
   const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
   if (!solicitacao) {
@@ -757,21 +772,31 @@ export type EnviarParaPagamentoInput = {
   fornecedorDocumento: string;
 };
 
-// Anexar a nota fiscal e enviar para pagamento viraram um único passo
-// atômico (não duas funções separadas) depois que a revisão do ticket 10
-// apontou que, na prática, a UI sempre envia os dois juntos — mantê-los
-// separados só criava uma janela de corrida (a escrita da nota fiscal não
-// tinha guarda de concorrência, diferente de toda outra mutação neste
-// arquivo) e um estado parcial possível (nota fiscal anexada, envio ainda
-// não confirmado) sem trazer benefício real, já que não existe hoje nenhum
-// fluxo que anexe a nota fiscal sem também enviar para pagamento em seguida.
-// O upload em si (validação de formato, envio ao Storage) já aconteceu antes
-// desta função ser chamada — ver uploadAnexo em src/lib/storage.ts — então
-// aqui só resta confirmar que um caminho de fato chegou.
-export async function enviarParaPagamento(
+// Compartilhado por enviarParaPagamento (COMPRA_CONFIRMADA → ...) e
+// reenviarParaPagamento (PAGAMENTO_RECUSADO → ..., depois de o Financeiro
+// recusar) — mesmo padrão de processarEnvio/enviarSolicitacao/
+// reenviarSolicitacao: uma função interna faz validação+transição+
+// notificação, cada wrapper exportado só fixa de qual status ela parte, o
+// nome do evento de histórico, e a mensagem de erro para um status inválido.
+// Anexar a nota fiscal e enviar para pagamento são um único passo atômico
+// (não duas funções separadas) — mantê-los separados só criava uma janela de
+// corrida (a escrita da nota fiscal não tinha guarda de concorrência,
+// diferente de toda outra mutação neste arquivo) e um estado parcial
+// possível (nota fiscal anexada, envio ainda não confirmado) sem trazer
+// benefício real, já que não existe fluxo que anexe a nota fiscal sem também
+// enviar para pagamento em seguida. O upload em si (validação de formato,
+// envio ao Storage) já aconteceu antes desta função ser chamada — ver
+// uploadAnexo em src/lib/storage.ts — então aqui só resta confirmar que um
+// caminho de fato chegou.
+async function processarEnvioPagamento(
   id: string,
   atorId: string,
-  input: EnviarParaPagamentoInput
+  input: EnviarParaPagamentoInput,
+  statusOrigem:
+    | typeof StatusSolicitacao.COMPRA_CONFIRMADA
+    | typeof StatusSolicitacao.PAGAMENTO_RECUSADO,
+  eventoEnvio: string,
+  mensagemStatusInvalido: string
 ) {
   const notaFiscalUrlTrim = input.notaFiscalUrl.trim();
   const dadosPagamentoTrim = input.dadosPagamento.trim();
@@ -799,26 +824,28 @@ export async function enviarParaPagamento(
   if (atorId !== solicitacao.compradorId) {
     throw new Error("Só o comprador designado pode enviar essa solicitação para pagamento.");
   }
-  if (solicitacao.status !== StatusSolicitacao.COMPRA_CONFIRMADA) {
-    throw new Error(
-      "Só é possível enviar para pagamento uma solicitação com a compra confirmada."
-    );
+  if (solicitacao.status !== statusOrigem) {
+    throw new Error(mensagemStatusInvalido);
   }
 
   await atualizarStatusComGuarda(
     id,
-    StatusSolicitacao.COMPRA_CONFIRMADA,
+    statusOrigem,
     {
       status: StatusSolicitacao.AGUARDANDO_PAGAMENTO,
       notaFiscalUrl: notaFiscalUrlTrim,
       metodoPagamento: input.metodoPagamento,
       dadosPagamento: dadosPagamentoTrim,
       fornecedorDocumento: fornecedorDocumentoTrim,
+      // Só faz diferença vindo de PAGAMENTO_RECUSADO (de COMPRA_CONFIRMADA já
+      // é null) — limpa o motivo antigo atomicamente junto com a transição,
+      // mesmo padrão de processarEnvio limpando motivoRejeicao no reenvio.
+      motivoRecusaPagamento: null,
     },
     "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
-  await registrarHistorico(id, "enviado_para_pagamento", atorId);
+  await registrarHistorico(id, eventoEnvio, atorId);
 
   await Promise.all([
     getEmailSender().send({
@@ -837,6 +864,144 @@ export async function enviarParaPagamento(
         "teve a compra confirmada e a nota fiscal anexada, e está aguardando o processamento do pagamento.</p>"
     ),
   ]);
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function enviarParaPagamento(
+  id: string,
+  atorId: string,
+  input: EnviarParaPagamentoInput
+) {
+  return processarEnvioPagamento(
+    id,
+    atorId,
+    input,
+    StatusSolicitacao.COMPRA_CONFIRMADA,
+    "enviado_para_pagamento",
+    "Só é possível enviar para pagamento uma solicitação com a compra confirmada."
+  );
+}
+
+export async function reenviarParaPagamento(
+  id: string,
+  atorId: string,
+  input: EnviarParaPagamentoInput
+) {
+  return processarEnvioPagamento(
+    id,
+    atorId,
+    input,
+    StatusSolicitacao.PAGAMENTO_RECUSADO,
+    "reenviado_para_pagamento",
+    "Só é possível reenviar para pagamento uma solicitação com o pagamento recusado."
+  );
+}
+
+export async function listarPendentesPagamento() {
+  return getDb().solicitacao.findMany({
+    where: { status: StatusSolicitacao.AGUARDANDO_PAGAMENTO },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
+}
+
+export async function recusarPagamento(id: string, atorId: string, motivo: string) {
+  const motivoTrim = motivo.trim();
+  if (!motivoTrim) {
+    throw new Error("O motivo da recusa é obrigatório.");
+  }
+
+  const [, solicitacao] = await Promise.all([
+    requireFinanceiroAtor(atorId, "Só o Financeiro pode recusar um pagamento."),
+    getDb().solicitacao.findUnique({ where: { id }, include: { comprador: true } }),
+  ]);
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
+    throw new Error("Só é possível recusar uma solicitação que está aguardando pagamento.");
+  }
+  // Garantido pelo próprio enviarParaPagamento (exige atorId === compradorId
+  // para entrar em AGUARDANDO_PAGAMENTO) — não deveria acontecer, mas se
+  // acontecer é melhor lançar do que notificar ninguém silenciosamente.
+  if (!solicitacao.comprador) {
+    throw new Error("Essa solicitação não tem um comprador designado.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_PAGAMENTO,
+    { status: StatusSolicitacao.PAGAMENTO_RECUSADO, motivoRecusaPagamento: motivoTrim },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "pagamento_recusado", atorId, motivoTrim);
+
+  await getEmailSender().send({
+    to: solicitacao.comprador.email,
+    subject: "Solicitação de pagamento recusada",
+    html:
+      `<p>Olá, ${solicitacao.comprador.nome}.</p>` +
+      `<p>O Financeiro recusou o pagamento da solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}).</p>` +
+      `<p>Motivo: ${motivoTrim}</p>`,
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export type RegistrarPagamentoInput = {
+  // Mesmo esquema de notaFiscalUrl em enviarParaPagamento: caminho no bucket
+  // de Storage, não uma URL pública — ver src/lib/storage.ts.
+  comprovantePagamentoUrl: string;
+};
+
+export async function registrarPagamento(
+  id: string,
+  atorId: string,
+  input: RegistrarPagamentoInput
+) {
+  const comprovanteTrim = input.comprovantePagamentoUrl.trim();
+  if (!comprovanteTrim) {
+    throw new Error("O comprovante de pagamento é obrigatório.");
+  }
+
+  const [, solicitacao] = await Promise.all([
+    requireFinanceiroAtor(atorId, "Só o Financeiro pode registrar um pagamento."),
+    getDb().solicitacao.findUnique({ where: { id }, include: { solicitante: true } }),
+  ]);
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
+    throw new Error(
+      "Só é possível registrar o pagamento de uma solicitação que está aguardando pagamento."
+    );
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_PAGAMENTO,
+    { status: StatusSolicitacao.PAGO, comprovantePagamentoUrl: comprovanteTrim },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "pago", atorId);
+
+  // O comprovante em si mora no Storage (privado — ver src/lib/storage.ts);
+  // o e-mail avisa que ele já está disponível na solicitação em vez de
+  // embutir um link, seguindo o mesmo padrão de toda outra notificação deste
+  // módulo (nenhuma delas hoje embute link algum).
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Pagamento registrado",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) foi registrado. O comprovante já está ` +
+      "disponível na página da solicitação.</p>",
+  });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }

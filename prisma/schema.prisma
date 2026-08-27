@@ -232,6 +232,7 @@ model Solicitacao {
   dadosPagamento          String?
   comprovantePagamentoUrl String?
   motivoRejeicao          String?
+  motivoRecusaPagamento   String?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

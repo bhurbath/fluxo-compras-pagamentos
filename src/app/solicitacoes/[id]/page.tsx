@@ -5,12 +5,15 @@ import {
   aprovarNivel1Action,
   aprovarNivel2Action,
   designarCompradorManualmenteAction,
+  registrarPagamentoAction,
+  recusarPagamentoAction,
   rejeitarAction,
 } from "@/app/aprovacoes/actions";
 import {
   confirmarCompraAction,
   editarEReenviarAction,
   enviarParaPagamentoAction,
+  reenviarParaPagamentoAction,
 } from "../actions";
 import { DetalhesSolicitacao } from "../_components/detalhes-solicitacao";
 import { PainelAprovacao } from "../_components/painel-aprovacao";
@@ -18,6 +21,7 @@ import { PainelEdicaoReenvio } from "../_components/painel-edicao-reenvio";
 import { PainelDesignacaoComprador } from "../_components/painel-designacao-comprador";
 import { PainelConfirmarCompra } from "../_components/painel-confirmar-compra";
 import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
+import { PainelRegistrarPagamento } from "../_components/painel-registrar-pagamento";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import { obterSolicitacao } from "@/lib/workflow";
@@ -82,6 +86,13 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.status === StatusSolicitacao.COMPRA_CONFIRMADA &&
     solicitacao.compradorId === usuario.id;
 
+  const podeReenviarParaPagamento =
+    solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
+    solicitacao.compradorId === usuario.id;
+
+  const podeAprovarPagamento =
+    solicitacao.status === StatusSolicitacao.AGUARDANDO_PAGAMENTO && usuario.flagFinanceiro;
+
   // Só busca as listas dos dropdowns quando a seção de edição vai
   // efetivamente aparecer — evita 6 consultas desnecessárias em toda
   // visualização de uma solicitação que não está rejeitada.
@@ -89,9 +100,15 @@ export default async function SolicitacaoDetalhePage({
 
   const funcionarios = podeDesignarComprador ? await listarFuncionarios() : null;
 
-  const notaFiscalUrlAssinada = solicitacao.notaFiscalUrl
-    ? await gerarUrlAssinada(solicitacao.notaFiscalUrl)
-    : null;
+  // Independentes entre si (URLs assinadas de dois anexos diferentes) — cada
+  // uma é uma chamada de rede real ao Storage, então rodam em paralelo em
+  // vez de uma esperar a outra.
+  const [notaFiscalUrlAssinada, comprovantePagamentoUrlAssinada] = await Promise.all([
+    solicitacao.notaFiscalUrl ? gerarUrlAssinada(solicitacao.notaFiscalUrl) : null,
+    solicitacao.comprovantePagamentoUrl
+      ? gerarUrlAssinada(solicitacao.comprovantePagamentoUrl)
+      : null,
+  ]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
@@ -103,6 +120,7 @@ export default async function SolicitacaoDetalhePage({
         <DetalhesSolicitacao
           solicitacao={solicitacao}
           notaFiscalUrlAssinada={notaFiscalUrlAssinada}
+          comprovantePagamentoUrlAssinada={comprovantePagamentoUrlAssinada}
         />
 
         {podeAprovarNivel1 && (
@@ -150,6 +168,22 @@ export default async function SolicitacaoDetalhePage({
           <PainelEnviarPagamento
             solicitacaoId={solicitacao.id}
             action={enviarParaPagamentoAction}
+          />
+        )}
+
+        {podeReenviarParaPagamento && (
+          <PainelEnviarPagamento
+            solicitacaoId={solicitacao.id}
+            action={reenviarParaPagamentoAction}
+            titulo="Corrigir e reenviar para pagamento"
+          />
+        )}
+
+        {podeAprovarPagamento && (
+          <PainelRegistrarPagamento
+            solicitacaoId={solicitacao.id}
+            registrarAction={registrarPagamentoAction}
+            recusarAction={recusarPagamentoAction}
           />
         )}
 

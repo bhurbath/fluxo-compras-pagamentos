@@ -12,8 +12,10 @@ import {
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
+  reenviarParaPagamento,
   reenviarSolicitacao,
   type CriarSolicitacaoInput,
+  type EnviarParaPagamentoInput,
 } from "@/lib/workflow";
 import { FormaPagamento, MetodoPagamento, type Usuario } from "@prisma/client";
 
@@ -126,32 +128,56 @@ export const confirmarCompraAction = comUsuarioAutenticado(
   }
 );
 
+// Compartilhado por enviarParaPagamentoAction e reenviarParaPagamentoAction
+// — mesmos campos, mesma validação, mesmo upload; só a função do workflow
+// que cada uma chama depois muda (qual status de origem é aceito).
+async function lerCamposEnviarPagamento(
+  id: string,
+  formData: FormData
+): Promise<EnviarParaPagamentoInput> {
+  const campos = lerCampos(formData, [
+    "metodoPagamento",
+    "dadosPagamento",
+    "fornecedorDocumento",
+  ]);
+  exigirTodos(
+    campos,
+    "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios."
+  );
+
+  // Arquivo, não texto — lerCampos (que faz String(...)) não serve aqui.
+  const notaFiscal = formData.get("notaFiscal");
+  if (!(notaFiscal instanceof File) || notaFiscal.size === 0) {
+    throw new Error("A nota fiscal/comprovante da compra é obrigatória.");
+  }
+
+  const notaFiscalUrl = await uploadAnexo(notaFiscal, id);
+  return {
+    notaFiscalUrl,
+    metodoPagamento: campos.metodoPagamento as MetodoPagamento,
+    dadosPagamento: campos.dadosPagamento,
+    fornecedorDocumento: campos.fornecedorDocumento,
+  };
+}
+
 export const enviarParaPagamentoAction = comUsuarioAutenticado(
   async (usuario, id: string, formData: FormData) => {
-    const campos = lerCampos(formData, [
-      "metodoPagamento",
-      "dadosPagamento",
-      "fornecedorDocumento",
-    ]);
-    exigirTodos(
-      campos,
-      "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios."
-    );
-
-    // Arquivo, não texto — lerCampos (que faz String(...)) não serve aqui.
-    const notaFiscal = formData.get("notaFiscal");
-    if (!(notaFiscal instanceof File) || notaFiscal.size === 0) {
-      redirectComErro(`/solicitacoes/${id}`, "A nota fiscal/comprovante da compra é obrigatória.");
+    try {
+      const input = await lerCamposEnviarPagamento(id, formData);
+      await enviarParaPagamento(id, usuario.id, input);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }
 
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const reenviarParaPagamentoAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
     try {
-      const notaFiscalUrl = await uploadAnexo(notaFiscal, id);
-      await enviarParaPagamento(id, usuario.id, {
-        notaFiscalUrl,
-        metodoPagamento: campos.metodoPagamento as MetodoPagamento,
-        dadosPagamento: campos.dadosPagamento,
-        fornecedorDocumento: campos.fornecedorDocumento,
-      });
+      const input = await lerCamposEnviarPagamento(id, formData);
+      await reenviarParaPagamento(id, usuario.id, input);
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

@@ -14,6 +14,10 @@ import {
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
+  listarPendentesPagamento,
+  recusarPagamento,
+  registrarPagamento,
+  reenviarParaPagamento,
   reenviarSolicitacao,
   rejeitar,
   type CriarSolicitacaoInput,
@@ -167,6 +171,23 @@ async function criarSolicitacaoComCompradorDesignado(sufixo: string) {
     where: { id: aprovada.solicitanteId },
   });
   return { solicitacao: aprovada, comprador, solicitante };
+}
+
+// Creates a full solicitação already in AGUARDANDO_PAGAMENTO — the starting
+// point every recusarPagamento/registrarPagamento/listarPendentesPagamento
+// test needs. Goes through confirmarCompra + enviarParaPagamento for real
+// rather than faking the status directly.
+async function criarSolicitacaoAguardandoPagamento(sufixo: string) {
+  const { solicitacao, comprador, solicitante } =
+    await criarSolicitacaoComCompradorDesignado(sufixo);
+  await confirmarCompra(solicitacao.id, comprador.id);
+  const aguardandoPagamento = await enviarParaPagamento(solicitacao.id, comprador.id, {
+    notaFiscalUrl: `${sufixo}/nota-fiscal.pdf`,
+    metodoPagamento: "PIX",
+    dadosPagamento: "Chave PIX: 12345678900",
+    fornecedorDocumento: "12.345.678/0001-99",
+  });
+  return { solicitacao: aguardandoPagamento, comprador, solicitante };
 }
 
 async function criarEntradaMatriz(
@@ -1609,5 +1630,271 @@ describe("workflow: enviarParaPagamento", () => {
     expect(enviarSpy).toHaveBeenCalledWith(
       expect.objectContaining({ to: financeiro2.email })
     );
+  });
+
+  it("lança erro se a solicitação está com pagamento recusado (usar reenviarParaPagamento)", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("ep7");
+    const financeiro = await criarUsuario("fin-ep7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(solicitacao.id, financeiro.id, "Nota fiscal ilegível");
+
+    await expect(
+      enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO)
+    ).rejects.toThrow();
+  });
+});
+
+describe("workflow: reenviarParaPagamento", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("reenvia a partir de PAGAMENTO_RECUSADO, limpando o motivo da recusa", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("rv1");
+    const financeiro = await criarUsuario("fin-rv1");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(solicitacao.id, financeiro.id, "Nota fiscal ilegível");
+
+    const reenviada = await reenviarParaPagamento(solicitacao.id, comprador.id, {
+      ...INPUT_PAGAMENTO_VALIDO,
+      notaFiscalUrl: "rv1/nota-fiscal-corrigida.pdf",
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.motivoRecusaPagamento).toBeNull();
+    expect(reenviada.notaFiscalUrl).toBe("rv1/nota-fiscal-corrigida.pdf");
+  });
+
+  it("lança erro se a solicitação não está com pagamento recusado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("rv2");
+
+    await expect(
+      reenviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem reenvia não é o comprador designado", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("rv3");
+    const financeiro = await criarUsuario("fin-rv3");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer");
+    const outro = await criarUsuario("outro-rv3");
+
+    await expect(
+      reenviarParaPagamento(solicitacao.id, outro.id, INPUT_PAGAMENTO_VALIDO)
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento reenviado_para_pagamento no histórico", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("rv4");
+    const financeiro = await criarUsuario("fin-rv4");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer");
+
+    await reenviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("reenviado_para_pagamento");
+    expect(historico.at(-1)?.atorId).toBe(comprador.id);
+  });
+});
+
+describe("workflow: recusarPagamento", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("recusa o pagamento e transiciona para PAGAMENTO_RECUSADO", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("rp1");
+    const financeiro = await criarUsuario("fin-rp1");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Falta nota fiscal");
+
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+    expect(recusada.motivoRecusaPagamento).toBe("Falta nota fiscal");
+  });
+
+  it("lança erro se o motivo estiver vazio", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("rp2");
+    const financeiro = await criarUsuario("fin-rp2");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await expect(recusarPagamento(solicitacao.id, financeiro.id, "  ")).rejects.toThrow();
+  });
+
+  it("lança erro se quem recusa não é do Financeiro", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("rp3");
+    const naoFinanceiro = await criarUsuario("naofin-rp3");
+
+    await expect(
+      recusarPagamento(solicitacao.id, naoFinanceiro.id, "Motivo qualquer")
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aguardando pagamento", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("rp4");
+    await confirmarCompra(solicitacao.id, comprador.id);
+    const financeiro = await criarUsuario("fin-rp4");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await expect(
+      recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer")
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico com o motivo ao recusar", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("rp5");
+    const financeiro = await criarUsuario("fin-rp5");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await recusarPagamento(solicitacao.id, financeiro.id, "Dados bancários incorretos");
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("pagamento_recusado");
+    expect(historico.at(-1)?.atorId).toBe(financeiro.id);
+    expect(historico.at(-1)?.detalhe).toBe("Dados bancários incorretos");
+  });
+
+  it("notifica o comprador designado por e-mail", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("rp6");
+    const financeiro = await criarUsuario("fin-rp6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer");
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: comprador.email })
+    );
+  });
+});
+
+describe("workflow: registrarPagamento", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("registra o pagamento e transiciona para PAGO", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg1");
+    const financeiro = await criarUsuario("fin-pg1");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "pg1/comprovante.pdf",
+    });
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBe("pg1/comprovante.pdf");
+  });
+
+  it("lança erro se o comprovante não for informado", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg2");
+    const financeiro = await criarUsuario("fin-pg2");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await expect(
+      registrarPagamento(solicitacao.id, financeiro.id, { comprovantePagamentoUrl: "  " })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem registra não é do Financeiro", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg3");
+    const naoFinanceiro = await criarUsuario("naofin-pg3");
+
+    await expect(
+      registrarPagamento(solicitacao.id, naoFinanceiro.id, {
+        comprovantePagamentoUrl: "pg3/comprovante.pdf",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aguardando pagamento", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("pg4");
+    await confirmarCompra(solicitacao.id, comprador.id);
+    const financeiro = await criarUsuario("fin-pg4");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await expect(
+      registrarPagamento(solicitacao.id, financeiro.id, {
+        comprovantePagamentoUrl: "pg4/comprovante.pdf",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao registrar o pagamento", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg5");
+    const financeiro = await criarUsuario("fin-pg5");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await registrarPagamento(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "pg5/comprovante.pdf",
+    });
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("pago");
+    expect(historico.at(-1)?.atorId).toBe(financeiro.id);
+  });
+
+  it("notifica o solicitante por e-mail", async () => {
+    const { solicitacao, solicitante } = await criarSolicitacaoAguardandoPagamento("pg6");
+    const financeiro = await criarUsuario("fin-pg6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await registrarPagamento(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "pg6/comprovante.pdf",
+    });
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
+  });
+});
+
+describe("workflow: listarPendentesPagamento", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações aguardando pagamento", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("lp1");
+
+    const pendentes = await listarPendentesPagamento();
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("não lista solicitações em outros status", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("lp2");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const pendentes = await listarPendentesPagamento();
+
+    expect(pendentes).toHaveLength(0);
   });
 });

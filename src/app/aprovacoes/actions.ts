@@ -5,10 +5,13 @@ import { comUsuarioAutenticado } from "@/lib/require-usuario";
 import { withFinanceiro } from "@/lib/admin/guard";
 import { redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
+import { uploadAnexo } from "@/lib/storage";
 import {
   aprovarNivel1,
   aprovarNivel2,
   designarCompradorManualmente,
+  registrarPagamento,
+  recusarPagamento,
   rejeitar,
 } from "@/lib/workflow";
 
@@ -58,6 +61,37 @@ export const designarCompradorManualmenteAction = withFinanceiro(
     const compradorId = String(formData.get("compradorId") ?? "");
     try {
       await designarCompradorManualmente(id, usuario.id, compradorId);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const recusarPagamentoAction = withFinanceiro(
+  async (usuario, id: string, formData: FormData) => {
+    const motivo = String(formData.get("motivo") ?? "");
+    try {
+      await recusarPagamento(id, usuario.id, motivo);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const registrarPagamentoAction = withFinanceiro(
+  async (usuario, id: string, formData: FormData) => {
+    const comprovante = formData.get("comprovante");
+    if (!(comprovante instanceof File) || comprovante.size === 0) {
+      redirectComErro(`/solicitacoes/${id}`, "O comprovante de pagamento é obrigatório.");
+    }
+
+    try {
+      const comprovantePagamentoUrl = await uploadAnexo(comprovante, id);
+      await registrarPagamento(id, usuario.id, { comprovantePagamentoUrl });
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

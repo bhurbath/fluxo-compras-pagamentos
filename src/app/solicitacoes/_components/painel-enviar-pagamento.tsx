@@ -3,13 +3,15 @@ import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 export function PainelEnviarPagamento({
   solicitacaoId,
   action,
+  titulo = "Anexar nota fiscal e enviar para pagamento",
 }: {
   solicitacaoId: string;
   action: (id: string, formData: FormData) => Promise<void>;
+  titulo?: string;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded border p-4">
-      <h2 className="font-semibold">Anexar nota fiscal e enviar para pagamento</h2>
+      <h2 className="font-semibold">{titulo}</h2>
       <p className="text-sm text-gray-600">
         Esses dados são obrigatórios antes de enviar ao Financeiro.
       </p>

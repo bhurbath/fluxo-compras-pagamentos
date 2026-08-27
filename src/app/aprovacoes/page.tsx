@@ -5,6 +5,7 @@ import {
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
+  listarPendentesPagamento,
 } from "@/lib/workflow";
 import { formatarReais } from "@/lib/format";
 
@@ -66,9 +67,9 @@ export default async function AprovacoesPage() {
     listarPendentesNivel1(usuario.id),
     listarPendentesNivel2(usuario.id),
   ]);
-  const pendentesDesignacaoComprador = usuario.flagFinanceiro
-    ? await listarPendentesDesignacaoComprador()
-    : null;
+  const [pendentesDesignacaoComprador, pendentesPagamento] = usuario.flagFinanceiro
+    ? await Promise.all([listarPendentesDesignacaoComprador(), listarPendentesPagamento()])
+    : [null, null];
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-4 p-6">
@@ -92,6 +93,14 @@ export default async function AprovacoesPage() {
             titulo="Designação de comprador (Financeiro)"
             itens={pendentesDesignacaoComprador}
             vazioMensagem="Nenhuma solicitação aguardando designação de comprador."
+          />
+        )}
+
+        {pendentesPagamento && (
+          <TabelaPendentes
+            titulo="Aprovação de pagamento (Financeiro)"
+            itens={pendentesPagamento}
+            vazioMensagem="Nenhuma solicitação aguardando aprovação de pagamento."
           />
         )}
 

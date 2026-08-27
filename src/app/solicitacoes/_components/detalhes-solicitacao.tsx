@@ -23,13 +23,16 @@ const FORMA_PAGAMENTO_LEGIVEL: Record<string, string> = {
 export function DetalhesSolicitacao({
   solicitacao,
   notaFiscalUrlAssinada,
+  comprovantePagamentoUrlAssinada,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
-  // URL temporária (Supabase Storage é privado) para baixar o anexo, gerada
-  // pelo Server Component pai a partir de solicitacao.notaFiscalUrl (que
-  // guarda um caminho no bucket, não uma URL utilizável diretamente) — ver
-  // src/lib/storage.ts. null quando não há anexo ou a URL não pôde ser gerada.
+  // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
+  // geradas pelo Server Component pai a partir dos caminhos guardados em
+  // solicitacao.notaFiscalUrl/comprovantePagamentoUrl (que não são URLs
+  // utilizáveis diretamente) — ver src/lib/storage.ts. null quando não há
+  // anexo ou a URL não pôde ser gerada.
   notaFiscalUrlAssinada?: string | null;
+  comprovantePagamentoUrlAssinada?: string | null;
 }) {
   return (
     <dl className="flex flex-col gap-2">
@@ -107,6 +110,12 @@ export function DetalhesSolicitacao({
           <dd>{solicitacao.motivoRejeicao}</dd>
         </div>
       )}
+      {solicitacao.motivoRecusaPagamento && (
+        <div>
+          <dt className="text-sm text-gray-600">Motivo da recusa do pagamento</dt>
+          <dd>{solicitacao.motivoRecusaPagamento}</dd>
+        </div>
+      )}
       {solicitacao.comprador && (
         <div>
           <dt className="text-sm text-gray-600">Comprador</dt>
@@ -151,6 +160,25 @@ export function DetalhesSolicitacao({
         <div>
           <dt className="text-sm text-gray-600">Dados de pagamento</dt>
           <dd>{solicitacao.dadosPagamento}</dd>
+        </div>
+      )}
+      {solicitacao.comprovantePagamentoUrl && (
+        <div>
+          <dt className="text-sm text-gray-600">Comprovante de pagamento</dt>
+          <dd>
+            {comprovantePagamentoUrlAssinada ? (
+              <a
+                href={comprovantePagamentoUrlAssinada}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Baixar comprovante
+              </a>
+            ) : (
+              "Link indisponível no momento — atualize a página."
+            )}
+          </dd>
         </div>
       )}
     </dl>
