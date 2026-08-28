@@ -959,6 +959,14 @@ export type RegistrarPagamentoInput = {
   // Mesmo esquema de notaFiscalUrl em enviarParaPagamento: caminho no bucket
   // de Storage, não uma URL pública — ver src/lib/storage.ts.
   comprovantePagamentoUrl: string;
+  // Link de download já assinado (gerarUrlAssinada, com validade maior que
+  // o padrão — o e-mail pode ser aberto dias depois), gerado por quem chama
+  // essa função a partir do mesmo comprovantePagamentoUrl acima. Buscar a
+  // URL assinada é uma chamada de rede ao Storage — fica de fora deste
+  // módulo (só Postgres) de propósito, igual ao upload em si. Opcional:
+  // quando ausente/nula (ex: geração da URL falhou), o e-mail cai para o
+  // texto genérico "acesse a solicitação no sistema".
+  comprovanteUrlAssinada?: string | null;
 };
 
 export async function registrarPagamento(
@@ -993,18 +1001,17 @@ export async function registrarPagamento(
 
   await registrarHistorico(id, "pago", atorId);
 
-  // O comprovante em si mora no Storage (privado — ver src/lib/storage.ts);
-  // o e-mail avisa que ele já está disponível na solicitação em vez de
-  // embutir um link, seguindo o mesmo padrão de toda outra notificação deste
-  // módulo (nenhuma delas hoje embute link algum).
   await getEmailSender().send({
     to: solicitacao.solicitante.email,
     subject: "Pagamento registrado",
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}) foi registrado. O comprovante já está ` +
-      "disponível na página da solicitação.</p>",
+      `(${formatarReais(solicitacao.valor)}) foi registrado.</p>` +
+      (input.comprovanteUrlAssinada
+        ? `<p><a href="${input.comprovanteUrlAssinada}">Baixar comprovante</a> ` +
+          "(link válido por 7 dias).</p>"
+        : "<p>O comprovante já está disponível na página da solicitação.</p>"),
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });

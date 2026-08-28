@@ -5,7 +5,7 @@ import { comUsuarioAutenticado } from "@/lib/require-usuario";
 import { withFinanceiro } from "@/lib/admin/guard";
 import { redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
-import { uploadAnexo } from "@/lib/storage";
+import { gerarUrlAssinada, uploadAnexo } from "@/lib/storage";
 import {
   aprovarNivel1,
   aprovarNivel2,
@@ -91,7 +91,16 @@ export const registrarPagamentoAction = withFinanceiro(
 
     try {
       const comprovantePagamentoUrl = await uploadAnexo(comprovante, id);
-      await registrarPagamento(id, usuario.id, { comprovantePagamentoUrl });
+      // Validade maior que o padrão de página (1h) — o e-mail pode ser
+      // aberto dias depois de enviado.
+      const comprovanteUrlAssinada = await gerarUrlAssinada(
+        comprovantePagamentoUrl,
+        7 * 24 * 60 * 60
+      );
+      await registrarPagamento(id, usuario.id, {
+        comprovantePagamentoUrl,
+        comprovanteUrlAssinada,
+      });
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

@@ -46,14 +46,19 @@ export async function uploadAnexo(file: File, solicitacaoId: string): Promise<st
   return caminho;
 }
 
-// Gera uma URL temporária (1 hora) para um caminho já enviado. Retorna null
-// em caso de falha (ex: arquivo removido do bucket por fora) em vez de
-// lançar — quem exibe o anexo trata isso como "link indisponível", não como
-// um erro que derruba a página inteira.
-export async function gerarUrlAssinada(caminho: string): Promise<string | null> {
+// Gera uma URL temporária para um caminho já enviado (1 hora por padrão —
+// suficiente pra uma visualização de página; um link indo por e-mail passa
+// uma validade maior, já que pode ser aberto dias depois). Retorna null em
+// caso de falha (ex: arquivo removido do bucket por fora) em vez de lançar
+// — quem exibe o anexo trata isso como "link indisponível", não como um
+// erro que derruba a página (ou o registro do pagamento) inteiro.
+export async function gerarUrlAssinada(
+  caminho: string,
+  expiraEmSegundos = 60 * 60
+): Promise<string | null> {
   const { data, error } = await getStorageClient()
     .storage.from(BUCKET)
-    .createSignedUrl(caminho, 60 * 60);
+    .createSignedUrl(caminho, expiraEmSegundos);
   if (error || !data) {
     return null;
   }

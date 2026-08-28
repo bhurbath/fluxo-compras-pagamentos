@@ -65,3 +65,14 @@ arquitetural e convergiu numa única correção coerente:
   sequência apesar de serem leituras independentes — passaram a rodar em
   paralelo (`Promise.all`), assim como as duas URLs assinadas geradas na
   página de detalhe e as duas listas Financeiro-only da página de aprovações.
+
+**Atualização (revisão da spec, pós-ticket 13):** a versão original desta
+checkbox notificava o solicitante sem embutir o comprovante no e-mail (só
+avisava que já estava disponível na página), para não fugir do padrão do
+resto do módulo (nenhuma notificação embutia link algum). A pedido do
+usuário, `registrarPagamento` passou a receber uma URL assinada (gerada por
+`registrarPagamentoAction`, com validade de 7 dias — maior que o padrão de
+1h usado pela página, já que o e-mail pode ser aberto dias depois) e
+embuti-la como link de download no e-mail. A geração da URL continua fora
+de `workflow.ts` (só Postgres, sem chamada de rede ao Storage), mantendo o
+seam de teste do módulo intacto.

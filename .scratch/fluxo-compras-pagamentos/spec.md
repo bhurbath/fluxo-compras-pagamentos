@@ -1,6 +1,6 @@
 # Fluxo de Solicitações de Compra e Pagamento
 
-Status: ready-for-agent
+Status: done — todos os 13 tickets em `.scratch/fluxo-compras-pagamentos/issues/` implementados.
 
 ## Problem Statement
 
@@ -84,7 +84,7 @@ Um app web interno onde qualquer funcionário pode abrir uma solicitação de co
 - **Regra de autoaprovação**: resolvida dentro de `enviarSolicitacao`/`aprovarNivel1`/`aprovarNivel2` — se o solicitante é o próprio responsável do departamento (ou o próprio diretor), a etapa correspondente é pulada automaticamente.
 - **Resolução de alçada**: ao enviar a solicitação, o `valor` é comparado contra `faixas_alcada` para decidir se, após a aprovação de nível 1, a solicitação precisa também do diretor (`aguardando_nivel2`) ou vai direto para `aprovado`.
 - **Designação de comprador**: lookup em `matriz_comprador` por (`departamento_id`, `tipo_compra_id`) no momento em que a solicitação entra em `aprovado`. Sem correspondência → atribuída ao Financeiro para designação manual.
-- **Notificações**: módulo de e-mail disparado em cada transição de estado relevante (ver lista detalhada em `issues/13-notificacoes-email.md`); provedor de e-mail transacional a definir na implementação.
+- **Notificações**: módulo de e-mail disparado em cada transição de estado relevante — implementadas inline em cada ticket relevante (não ganharam um ticket dedicado); ver as funções `notificar*`/`getEmailSender().send(...)` em `src/lib/workflow.ts` para a lista completa. Provedor: Microsoft Graph API, reaproveitando a mesma app registration do login (permissão de aplicativo `Mail.Send` — ver `SETUP.md`).
 - **Anexos** (nota fiscal, comprovante de pagamento): armazenamento de arquivos a definir na implementação (ex: object storage compatível com S3).
 - **Papéis e permissões**: não é um sistema de roles genérico — Financeiro é uma flag fixa em `usuarios`; Responsável e Diretor são derivados de `departamentos.responsavel_id`/`diretor_id`; Comprador é derivado de `solicitacoes.comprador_id`. Toda tela de administração (departamentos, alçada, tipos de compra, matriz) é restrita a usuários com a flag Financeiro — não existe um papel de admin separado.
 
@@ -112,4 +112,4 @@ Um app web interno onde qualquer funcionário pode abrir uma solicitação de co
 - Hoje existem apenas 2 diretores na empresa, cada um supervisionando múltiplos departamentos — mas o schema não deve assumir esse número fixo; é só o estado atual dos dados.
 - A lista inicial de tipos de compra ("Compras no Mercado Livre", "Compras no cartão de crédito", "Serviços e produtos por departamento") é um seed, não uma lista fechada — deve ser extensível via a tela de admin sem alterações de código.
 - O label `ready-for-agent` acima segue o vocabulário canônico definido em `docs/agents/triage-labels.md` (labels padrão, sem customização).
-- Os tickets já existentes em `.scratch/fluxo-compras-pagamentos/issues/01` a `15` cobrem, em conjunto, o mesmo escopo descrito nesta spec, numa granularidade mais próxima de implementação — podem ser usados como checklist de tarefas ao construir a partir desta spec.
+- Os tickets em `.scratch/fluxo-compras-pagamentos/issues/01` a `13` cobrem, em conjunto, o mesmo escopo descrito nesta spec, numa granularidade mais próxima de implementação — todos concluídos (`status: done`); o escopo original previa até o ticket 15, mas consolidou em 13 durante a implementação (notificações, por exemplo, não ganharam ticket próprio — acabaram embutidas em cada ticket relevante).
