@@ -1,16 +1,17 @@
 import Link from "next/link";
-import { auth, signIn, signOut } from "@/lib/auth";
+import { signIn, signOut } from "@/lib/auth";
+import { getUsuarioAutenticado } from "@/lib/require-usuario";
 
 export default async function Home() {
-  const session = await auth();
+  const usuario = await getUsuarioAutenticado();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4">
       <h1 className="text-xl font-semibold">Fluxo de Compras e Pagamentos</h1>
-      {session?.user ? (
+      {usuario ? (
         <>
           <p>
-            Logado como <strong>{session.user.name}</strong> ({session.user.email})
+            Logado como <strong>{usuario.nome}</strong> ({usuario.email})
           </p>
           <Link
             href="/solicitacoes/nova"
@@ -24,6 +25,11 @@ export default async function Home() {
           <Link href="/aprovacoes" className="underline">
             Pendentes de mim
           </Link>
+          {usuario.flagFinanceiro && (
+            <Link href="/exportar" className="underline">
+              Exportar solicitações
+            </Link>
+          )}
           <form
             action={async () => {
               "use server";

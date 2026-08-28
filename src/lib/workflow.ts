@@ -1042,3 +1042,38 @@ export async function listarPendentesComprador(compradorId: string) {
     orderBy: { criadoEm: "asc" },
   });
 }
+
+export type FiltrosExportacao = {
+  departamentoId?: string;
+  status?: StatusSolicitacao;
+  de?: Date;
+  ate?: Date;
+};
+
+// Para o relatório CSV do Financeiro (ticket 13) — não é uma transição, só
+// uma consulta com filtro, mas fica no módulo junto com o resto por ser a
+// mesma entidade e os mesmos includes que as outras funções de listagem já
+// usam. Traz o histórico completo (com o ator de cada evento) para "datas de
+// cada transição de status" e para a coluna "aprovadores" — de propósito,
+// não usa departamento.responsavel/diretor para essa coluna: aprovador
+// designado hoje ≠ quem de fato aprovou no passado se o departamento trocou
+// de responsável/diretor depois (a tela de admin permite isso a qualquer
+// momento). Um relatório de auditoria tem que refletir o que aconteceu, não
+// a configuração atual.
+export async function listarSolicitacoesParaExportar(filtros: FiltrosExportacao) {
+  return getDb().solicitacao.findMany({
+    where: {
+      departamentoId: filtros.departamentoId,
+      status: filtros.status,
+      criadoEm: { gte: filtros.de, lte: filtros.ate },
+    },
+    include: {
+      solicitante: true,
+      departamento: true,
+      tipoCompra: true,
+      comprador: true,
+      historico: { include: { ator: true }, orderBy: { criadoEm: "asc" } },
+    },
+    orderBy: { criadoEm: "asc" },
+  });
+}

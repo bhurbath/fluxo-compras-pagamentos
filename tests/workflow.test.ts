@@ -17,6 +17,7 @@ import {
   listarPendentesNivel1,
   listarPendentesNivel2,
   listarPendentesPagamento,
+  listarSolicitacoesParaExportar,
   recusarPagamento,
   registrarPagamento,
   reenviarParaPagamento,
@@ -2011,5 +2012,81 @@ describe("workflow: listarPendentesComprador", () => {
     const pendentes = await listarPendentesComprador(outro.id);
 
     expect(pendentes).toHaveLength(0);
+  });
+});
+
+describe("workflow: listarSolicitacoesParaExportar", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações sem filtro nenhum", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoEnviada("ex1");
+
+    const exportadas = await listarSolicitacoesParaExportar({});
+
+    expect(exportadas.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("filtra por departamento", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoEnviada("ex2");
+    await criarSolicitacaoEnviada("ex2b");
+
+    const exportadas = await listarSolicitacoesParaExportar({
+      departamentoId: departamento.id,
+    });
+
+    expect(exportadas.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("filtra por status", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoEnviada("ex3");
+    await criarSolicitacaoRejeitada("ex3b");
+
+    const exportadas = await listarSolicitacoesParaExportar({
+      status: "ENVIADO",
+    });
+
+    expect(exportadas.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("inclui solicitações criadas dentro do período informado", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoEnviada("ex4");
+
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const amanha = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const exportadas = await listarSolicitacoesParaExportar({ de: ontem, ate: amanha });
+
+    expect(exportadas.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("exclui solicitações fora do período informado", async () => {
+    await criarFaixa("0", null, false);
+    await criarSolicitacaoEnviada("ex5");
+
+    const semanaPassada = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const exportadas = await listarSolicitacoesParaExportar({
+      de: semanaPassada,
+      ate: ontem,
+    });
+
+    expect(exportadas).toHaveLength(0);
+  });
+
+  it("inclui o histórico completo, com o ator de cada evento", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("ex6");
+
+    const [exportada] = await listarSolicitacoesParaExportar({});
+
+    expect(exportada.id).toBe(solicitacao.id);
+    expect(exportada.historico.length).toBeGreaterThan(0);
+    expect(exportada.historico[0]?.ator?.id).toBe(solicitante.id);
   });
 });
