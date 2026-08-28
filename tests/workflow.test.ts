@@ -11,6 +11,8 @@ import {
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
+  listarMinhasSolicitacoes,
+  listarPendentesComprador,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
@@ -1894,6 +1896,119 @@ describe("workflow: listarPendentesPagamento", () => {
     await confirmarCompra(solicitacao.id, comprador.id);
 
     const pendentes = await listarPendentesPagamento();
+
+    expect(pendentes).toHaveLength(0);
+  });
+});
+
+describe("workflow: listarMinhasSolicitacoes", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações criadas pelo usuário, mais recente primeiro", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: primeira, solicitante } = await criarSolicitacaoEnviada("ms1");
+    const { solicitacao: segunda } = await criarSolicitacaoEnviada("ms2", {
+      solicitanteId: solicitante.id,
+    });
+
+    const minhas = await listarMinhasSolicitacoes(solicitante.id);
+
+    expect(minhas.map((s) => s.id)).toEqual([segunda.id, primeira.id]);
+  });
+
+  it("inclui rascunhos (não só solicitações enviadas)", async () => {
+    const departamento = await criarDepartamento("ms3");
+    const solicitante = await criarUsuario("sol-ms3");
+    const tipo = await criarTipoCompra("Tipo ms3");
+    const campos = await criarCamposObrigatorios("ms3");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Rascunho de teste",
+      valor: "100",
+      ...campos,
+    });
+
+    const minhas = await listarMinhasSolicitacoes(solicitante.id);
+
+    expect(minhas.map((s) => s.id)).toEqual([rascunho.id]);
+  });
+
+  it("não lista solicitações de outro usuário", async () => {
+    await criarFaixa("0", null, false);
+    await criarSolicitacaoEnviada("ms4");
+    const outro = await criarUsuario("outro-ms4");
+
+    const minhas = await listarMinhasSolicitacoes(outro.id);
+
+    expect(minhas).toHaveLength(0);
+  });
+});
+
+describe("workflow: listarPendentesComprador", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações aprovadas aguardando confirmação de compra", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("pc1");
+
+    const pendentes = await listarPendentesComprador(comprador.id);
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("lista solicitações com compra confirmada aguardando envio para pagamento", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("pc2");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const pendentes = await listarPendentesComprador(comprador.id);
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("lista solicitações com pagamento recusado aguardando reenvio", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("pc3");
+    const financeiro = await criarUsuario("fin-pc3");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer");
+
+    const pendentes = await listarPendentesComprador(comprador.id);
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("não lista solicitações aguardando pagamento", async () => {
+    const { comprador } = await criarSolicitacaoAguardandoPagamento("pc4");
+
+    const pendentes = await listarPendentesComprador(comprador.id);
+
+    expect(pendentes).toHaveLength(0);
+  });
+
+  it("não lista solicitações já pagas", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("pc4b");
+    const financeiro = await criarUsuario("fin-pc4b");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await registrarPagamento(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "pc4b/comprovante.pdf",
+    });
+
+    const pendentes = await listarPendentesComprador(comprador.id);
+
+    expect(pendentes).toHaveLength(0);
+  });
+
+  it("não lista solicitações de outro comprador", async () => {
+    await criarSolicitacaoComCompradorDesignado("pc5");
+    const outro = await criarUsuario("outro-pc5");
+
+    const pendentes = await listarPendentesComprador(outro.id);
 
     expect(pendentes).toHaveLength(0);
   });

@@ -16,6 +16,10 @@ export async function obterSolicitacao(id: string) {
       contaContabil: true,
       empresa: true,
       comprador: true,
+      historico: {
+        include: { ator: true },
+        orderBy: { criadoEm: "asc" },
+      },
     },
   });
 }
@@ -1004,4 +1008,37 @@ export async function registrarPagamento(
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+// "Minhas solicitações" — todo pedido criado pelo usuário, em qualquer
+// status (inclusive RASCUNHO, que só o próprio solicitante pode ver). Mais
+// recente primeiro, já que é uma lista de acompanhamento pessoal, não uma
+// fila de ação como as listas de pendentes.
+export async function listarMinhasSolicitacoes(solicitanteId: string) {
+  return getDb().solicitacao.findMany({
+    where: { solicitanteId },
+    include: { departamento: true },
+    orderBy: { criadoEm: "desc" },
+  });
+}
+
+// "Pendentes de mim" (papel de comprador) — os três status em que o
+// comprador designado tem uma ação real a tomar: confirmar a compra
+// (APROVADO), enviar para pagamento (COMPRA_CONFIRMADA), ou corrigir e
+// reenviar depois de uma recusa (PAGAMENTO_RECUSADO).
+export async function listarPendentesComprador(compradorId: string) {
+  return getDb().solicitacao.findMany({
+    where: {
+      compradorId,
+      status: {
+        in: [
+          StatusSolicitacao.APROVADO,
+          StatusSolicitacao.COMPRA_CONFIRMADA,
+          StatusSolicitacao.PAGAMENTO_RECUSADO,
+        ],
+      },
+    },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
 }

@@ -18,8 +18,11 @@ export default async function Home() {
           >
             Nova solicitação de compra
           </Link>
+          <Link href="/solicitacoes" className="underline">
+            Minhas solicitações
+          </Link>
           <Link href="/aprovacoes" className="underline">
-            Aprovações pendentes
+            Pendentes de mim
           </Link>
           <form
             action={async () => {
