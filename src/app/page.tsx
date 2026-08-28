@@ -26,9 +26,14 @@ export default async function Home() {
             Pendentes de mim
           </Link>
           {usuario.flagFinanceiro && (
-            <Link href="/exportar" className="underline">
-              Exportar solicitações
-            </Link>
+            <>
+              <Link href="/exportar" className="underline">
+                Exportar solicitações
+              </Link>
+              <Link href="/admin/departamentos" className="underline">
+                Cadastros (departamentos, alçada, tipos de compra, ...)
+              </Link>
+            </>
           )}
           <form
             action={async () => {
