@@ -17,7 +17,7 @@ export default async function NovaEmpresaPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Nova empresa</h1>
+      <h1 className="page-title">Nova empresa</h1>
       <ErroMensagem erro={erro} />
       <NomeSimplesForm
         label="Nome"

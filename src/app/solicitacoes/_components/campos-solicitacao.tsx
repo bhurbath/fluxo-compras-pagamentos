@@ -43,16 +43,16 @@ export function CamposSolicitacao({
 }) {
   return (
     <>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Descrição
         <textarea
           name="descricao"
           required
           defaultValue={defaultValues?.descricao}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Valor (R$)
         <input
           name="valor"
@@ -61,16 +61,16 @@ export function CamposSolicitacao({
           min="0.01"
           required
           defaultValue={defaultValues?.valor}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Departamento
         <select
           name="departamentoId"
           defaultValue={defaultValues?.departamentoId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {departamentos.map((d) => (
@@ -80,13 +80,13 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Tipo de compra
         <select
           name="tipoCompraId"
           defaultValue={defaultValues?.tipoCompraId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {tiposCompra.map((t) => (
@@ -96,23 +96,23 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Fornecedor
         <input
           name="fornecedor"
           type="text"
           required
           defaultValue={defaultValues?.fornecedor}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Forma de pagamento
         <select
           name="formaPagamento"
           defaultValue={defaultValues?.formaPagamento ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {FORMAS_PAGAMENTO.map((f) => (
@@ -122,13 +122,13 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Centro de custo
         <select
           name="centroCustoId"
           defaultValue={defaultValues?.centroCustoId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {centrosCusto.map((c) => (
@@ -138,13 +138,13 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Centro de resultado
         <select
           name="centroResultadoId"
           defaultValue={defaultValues?.centroResultadoId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {centrosResultado.map((c) => (
@@ -154,13 +154,13 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Conta contábil
         <select
           name="contaContabilId"
           defaultValue={defaultValues?.contaContabilId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {contasContabeis.map((c) => (
@@ -170,13 +170,13 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Empresa
         <select
           name="empresaId"
           defaultValue={defaultValues?.empresaId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {empresas.map((e) => (
@@ -186,21 +186,21 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Link da compra (opcional)
         <input
           name="linkCompra"
           type="text"
           defaultValue={defaultValues?.linkCompra ?? ""}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Informações complementares (opcional)
         <textarea
           name="informacoesComplementares"
           defaultValue={defaultValues?.informacoesComplementares ?? ""}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
     </>

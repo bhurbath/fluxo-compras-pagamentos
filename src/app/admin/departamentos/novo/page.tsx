@@ -19,7 +19,7 @@ export default async function NovoDepartamentoPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Novo departamento</h1>
+      <h1 className="page-title">Novo departamento</h1>
       <ErroMensagem erro={erro} />
       <DepartamentoForm
         funcionarios={funcionarios}

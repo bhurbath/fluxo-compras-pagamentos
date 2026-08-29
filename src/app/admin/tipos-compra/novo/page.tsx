@@ -17,7 +17,7 @@ export default async function NovoTipoCompraPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Novo tipo de compra</h1>
+      <h1 className="page-title">Novo tipo de compra</h1>
       <ErroMensagem erro={erro} />
       <NomeSimplesForm
         label="Nome"

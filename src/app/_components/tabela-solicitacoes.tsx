@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatarReais } from "@/lib/format";
-import { STATUS_LEGIVEL } from "../solicitacoes/_components/status-legivel";
+import { StatusPill } from "../solicitacoes/_components/status-pill";
 
 // Compartilhado por /aprovacoes ("Pendentes de mim") e /solicitacoes ("Minhas
 // solicitações") — mesma tabela, só a coluna Solicitante e o texto do link
@@ -31,41 +31,45 @@ export function TabelaSolicitacoes({
   linkTexto?: string;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      {titulo && <h2 className="font-semibold">{titulo}</h2>}
+    <div className="flex flex-col gap-3">
+      {titulo && <h2 className="section-title">{titulo}</h2>}
       {itens.length === 0 ? (
-        <p>{vazioMensagem}</p>
+        <p className="muted">{vazioMensagem}</p>
       ) : (
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b">
-              {mostrarSolicitante && <th className="p-2">Solicitante</th>}
-              <th className="p-2">Descrição</th>
-              <th className="p-2">Valor</th>
-              <th className="p-2">Departamento</th>
-              <th className="p-2">Situação</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((s) => (
-              <tr key={s.id} className="border-b">
-                {mostrarSolicitante && (
-                  <td className="p-2">{s.solicitante?.nome}</td>
-                )}
-                <td className="p-2">{s.descricao}</td>
-                <td className="p-2">{formatarReais(s.valor)}</td>
-                <td className="p-2">{s.departamento.nome}</td>
-                <td className="p-2">{STATUS_LEGIVEL[s.status] ?? s.status}</td>
-                <td className="p-2">
-                  <Link href={`/solicitacoes/${s.id}`} className="underline">
-                    {linkTexto}
-                  </Link>
-                </td>
+        <div className="panel" style={{ padding: "0.5rem 1.25rem" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                {mostrarSolicitante && <th>Solicitante</th>}
+                <th>Descrição</th>
+                <th>Valor</th>
+                <th>Departamento</th>
+                <th>Situação</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {itens.map((s) => (
+                <tr key={s.id}>
+                  {mostrarSolicitante && <td>{s.solicitante?.nome}</td>}
+                  <td>{s.descricao}</td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {formatarReais(s.valor)}
+                  </td>
+                  <td>{s.departamento.nome}</td>
+                  <td>
+                    <StatusPill status={s.status} />
+                  </td>
+                  <td className="text-right">
+                    <Link href={`/solicitacoes/${s.id}`} className="link">
+                      {linkTexto}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

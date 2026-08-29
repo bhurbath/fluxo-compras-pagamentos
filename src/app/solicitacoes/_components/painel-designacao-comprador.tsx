@@ -8,20 +8,20 @@ export function PainelDesignacaoComprador({
   action: (id: string, formData: FormData) => Promise<void>;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded border p-4">
-      <h2 className="font-semibold">Designar comprador</h2>
-      <p className="text-sm text-gray-600">
+    <div className="card-block">
+      <h2 className="section-title">Designar comprador</h2>
+      <p className="muted">
         Nenhum comprador cadastrado na matriz para esse departamento e tipo de compra.
         Escolha manualmente quem vai realizar a compra.
       </p>
       <form action={action.bind(null, solicitacaoId)} className="flex flex-col gap-2">
-        <label className="flex flex-col gap-1">
+        <label className="field">
           Comprador
           <select
             name="compradorId"
             defaultValue=""
             required
-            className="rounded border px-2 py-1"
+            className="input-field"
           >
             <option value="">Selecione</option>
             {funcionarios.map((f) => (
@@ -31,7 +31,7 @@ export function PainelDesignacaoComprador({
             ))}
           </select>
         </label>
-        <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+        <button type="submit" className="btn-primary">
           Designar
         </button>
       </form>

@@ -24,11 +24,8 @@ export function ListaNomeSimples({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{titulo}</h1>
-        <Link
-          href={`${basePath}/novo`}
-          className="rounded bg-blue-600 px-4 py-2 text-white"
-        >
+        <h1 className="page-title">{titulo}</h1>
+        <Link href={`${basePath}/novo`} className="btn-primary">
           {novoLabel}
         </Link>
       </div>
@@ -36,32 +33,34 @@ export function ListaNomeSimples({
       <ErroMensagem erro={erro} />
 
       {itens.length === 0 ? (
-        <p>{vazioMensagem}</p>
+        <p className="muted">{vazioMensagem}</p>
       ) : (
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b">
-              <th className="p-2">Nome</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((item) => (
-              <tr key={item.id} className="border-b">
-                <td className="p-2">{item.nome}</td>
-                <td className="p-2 flex gap-3">
-                  <Link href={`${basePath}/${item.id}`} className="underline">
-                    Editar
-                  </Link>
-                  <ExcluirButton
-                    action={excluirAction(item.id)}
-                    confirmMessage={confirmMessage}
-                  />
-                </td>
+        <div className="panel" style={{ padding: "0.5rem 1.25rem" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {itens.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.nome}</td>
+                  <td className="flex gap-4 justify-end">
+                    <Link href={`${basePath}/${item.id}`} className="link">
+                      Editar
+                    </Link>
+                    <ExcluirButton
+                      action={excluirAction(item.id)}
+                      confirmMessage={confirmMessage}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

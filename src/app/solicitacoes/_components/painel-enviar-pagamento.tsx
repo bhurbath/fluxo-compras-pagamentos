@@ -10,9 +10,9 @@ export function PainelEnviarPagamento({
   titulo?: string;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded border p-4">
-      <h2 className="font-semibold">{titulo}</h2>
-      <p className="text-sm text-gray-600">
+    <div className="card-block">
+      <h2 className="section-title">{titulo}</h2>
+      <p className="muted">
         Esses dados são obrigatórios antes de enviar ao Financeiro.
       </p>
       <form
@@ -20,32 +20,32 @@ export function PainelEnviarPagamento({
         encType="multipart/form-data"
         className="flex flex-col gap-2"
       >
-        <label className="flex flex-col gap-1">
+        <label className="field">
           Nota fiscal/comprovante (PDF, JPG ou PNG)
           <input
             type="file"
             name="notaFiscal"
             accept=".pdf,.jpg,.jpeg,.png"
             required
-            className="rounded border px-2 py-1"
+            className="input-field"
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="field">
           CNPJ/CPF do fornecedor
           <input
             type="text"
             name="fornecedorDocumento"
             required
-            className="rounded border px-2 py-1"
+            className="input-field"
           />
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="field">
           Método de pagamento
           <select
             name="metodoPagamento"
             defaultValue=""
             required
-            className="rounded border px-2 py-1"
+            className="input-field"
           >
             <option value="">Selecione</option>
             {Object.entries(METODO_PAGAMENTO_LEGIVEL).map(([valor, legivel]) => (
@@ -55,15 +55,15 @@ export function PainelEnviarPagamento({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
+        <label className="field">
           Dados de pagamento (chave PIX, dados bancários, etc.)
           <textarea
             name="dadosPagamento"
             required
-            className="rounded border px-2 py-1"
+            className="input-field"
           />
         </label>
-        <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+        <button type="submit" className="btn-primary">
           Enviar para pagamento
         </button>
       </form>

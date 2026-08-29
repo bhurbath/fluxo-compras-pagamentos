@@ -26,9 +26,9 @@ export default async function AprovacoesPage() {
     : [null, null];
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-4 p-6">
-      <div className="flex w-full max-w-2xl flex-col gap-6">
-        <h1 className="text-xl font-semibold">Pendentes de mim</h1>
+    <main className="shell">
+      <div className="shell-inner" style={{ maxWidth: "46rem" }}>
+        <h1 className="page-title">Pendentes de mim</h1>
 
         <TabelaSolicitacoes
           titulo="Nível 1 (responsável do departamento)"
@@ -64,7 +64,7 @@ export default async function AprovacoesPage() {
           />
         )}
 
-        <Link href="/" className="underline">
+        <Link href="/" className="link">
           Voltar
         </Link>
       </div>

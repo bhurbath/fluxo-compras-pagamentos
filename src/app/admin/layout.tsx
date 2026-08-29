@@ -19,40 +19,24 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen">
-      <nav className="flex gap-4 border-b p-4">
-        <Link href="/admin/departamentos" className="underline">
-          Departamentos
-        </Link>
-        <Link href="/admin/funcionarios" className="underline">
-          Funcionários
-        </Link>
-        <Link href="/admin/alcada" className="underline">
-          Alçada
-        </Link>
-        <Link href="/admin/tipos-compra" className="underline">
-          Tipos de compra
-        </Link>
-        <Link href="/admin/matriz-comprador" className="underline">
-          Matriz de comprador
-        </Link>
-        <Link href="/admin/centros-custo" className="underline">
-          Centros de custo
-        </Link>
-        <Link href="/admin/centros-resultado" className="underline">
-          Centros de resultado
-        </Link>
-        <Link href="/admin/contas-contabeis" className="underline">
-          Contas contábeis
-        </Link>
-        <Link href="/admin/empresas" className="underline">
-          Empresas
-        </Link>
-        <Link href="/" className="ml-auto underline">
+    <div className="min-h-screen" style={{ background: "var(--ground)" }}>
+      <nav className="admin-nav">
+        <Link href="/admin/departamentos">Departamentos</Link>
+        <Link href="/admin/funcionarios">Funcionários</Link>
+        <Link href="/admin/alcada">Alçada</Link>
+        <Link href="/admin/tipos-compra">Tipos de compra</Link>
+        <Link href="/admin/matriz-comprador">Matriz de comprador</Link>
+        <Link href="/admin/centros-custo">Centros de custo</Link>
+        <Link href="/admin/centros-resultado">Centros de resultado</Link>
+        <Link href="/admin/contas-contabeis">Contas contábeis</Link>
+        <Link href="/admin/empresas">Empresas</Link>
+        <Link href="/" className="link" style={{ marginLeft: "auto" }}>
           Voltar ao app
         </Link>
       </nav>
-      <main className="p-6">{children}</main>
+      <main className="p-6 md:p-10" style={{ maxWidth: "56rem", margin: "0 auto" }}>
+        {children}
+      </main>
     </div>
   );
 }

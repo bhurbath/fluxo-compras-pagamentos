@@ -5,11 +5,13 @@
 // content doesn't need to be reimplemented at each.
 export function ErroInesperado({ reset }: { reset: () => void }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-      <p>Ocorreu um erro inesperado.</p>
-      <button onClick={() => reset()} className="rounded border px-4 py-2">
-        Tentar de novo
-      </button>
+    <div className="shell" style={{ justifyContent: "center" }}>
+      <div className="panel flex flex-col items-center gap-4" style={{ maxWidth: "24rem" }}>
+        <p>Ocorreu um erro inesperado.</p>
+        <button onClick={() => reset()} className="btn-secondary">
+          Tentar de novo
+        </button>
+      </div>
     </div>
   );
 }

@@ -13,22 +13,22 @@ export function DepartamentoForm({
 }) {
   return (
     <form action={action} className="flex flex-col gap-3 max-w-sm">
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Nome
         <input
           name="nome"
           defaultValue={defaultValues?.nome}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Responsável (nível 1)
         <select
           name="responsavelId"
           defaultValue={defaultValues?.responsavelId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {funcionarios.map((f) => (
@@ -38,13 +38,13 @@ export function DepartamentoForm({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Diretor (nível 2)
         <select
           name="diretorId"
           defaultValue={defaultValues?.diretorId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {funcionarios.map((f) => (
@@ -54,7 +54,7 @@ export function DepartamentoForm({
           ))}
         </select>
       </label>
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+      <button type="submit" className="btn-primary">
         {submitLabel}
       </button>
     </form>

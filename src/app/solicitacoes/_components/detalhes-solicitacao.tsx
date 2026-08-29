@@ -1,7 +1,7 @@
 import { formatarReais } from "@/lib/format";
 import type { obterSolicitacao } from "@/lib/workflow";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
-import { STATUS_LEGIVEL } from "./status-legivel";
+import { StatusPill } from "./status-pill";
 import { LinhaDoTempo } from "./linha-do-tempo";
 
 const FORMA_PAGAMENTO_LEGIVEL: Record<string, string> = {
@@ -28,61 +28,63 @@ export function DetalhesSolicitacao({
     <>
       <dl className="flex flex-col gap-2">
         <div>
-          <dt className="text-sm text-gray-600">Status</dt>
-          <dd>{STATUS_LEGIVEL[solicitacao.status] ?? solicitacao.status}</dd>
+          <dt className="muted">Status</dt>
+          <dd style={{ marginTop: "0.2rem" }}>
+            <StatusPill status={solicitacao.status} />
+          </dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Descrição</dt>
+          <dt className="muted">Descrição</dt>
           <dd>{solicitacao.descricao}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Valor</dt>
+          <dt className="muted">Valor</dt>
           <dd>{formatarReais(solicitacao.valor)}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Departamento</dt>
+          <dt className="muted">Departamento</dt>
           <dd>{solicitacao.departamento.nome}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Tipo de compra</dt>
+          <dt className="muted">Tipo de compra</dt>
           <dd>{solicitacao.tipoCompra.nome}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Fornecedor</dt>
+          <dt className="muted">Fornecedor</dt>
           <dd>{solicitacao.fornecedor}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Forma de pagamento</dt>
+          <dt className="muted">Forma de pagamento</dt>
           <dd>
             {FORMA_PAGAMENTO_LEGIVEL[solicitacao.formaPagamento] ??
               solicitacao.formaPagamento}
           </dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Centro de custo</dt>
+          <dt className="muted">Centro de custo</dt>
           <dd>{solicitacao.centroCusto.nome}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Centro de resultado</dt>
+          <dt className="muted">Centro de resultado</dt>
           <dd>{solicitacao.centroResultado.nome}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Conta contábil</dt>
+          <dt className="muted">Conta contábil</dt>
           <dd>{solicitacao.contaContabil.nome}</dd>
         </div>
         <div>
-          <dt className="text-sm text-gray-600">Empresa</dt>
+          <dt className="muted">Empresa</dt>
           <dd>{solicitacao.empresa.nome}</dd>
         </div>
         {solicitacao.linkCompra && (
           <div>
-            <dt className="text-sm text-gray-600">Link da compra</dt>
+            <dt className="muted">Link da compra</dt>
             <dd>
               <a
                 href={solicitacao.linkCompra}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline"
+                className="link"
               >
                 {solicitacao.linkCompra}
               </a>
@@ -91,38 +93,38 @@ export function DetalhesSolicitacao({
         )}
         {solicitacao.informacoesComplementares && (
           <div>
-            <dt className="text-sm text-gray-600">Informações complementares</dt>
+            <dt className="muted">Informações complementares</dt>
             <dd>{solicitacao.informacoesComplementares}</dd>
           </div>
         )}
         {solicitacao.motivoRejeicao && (
           <div>
-            <dt className="text-sm text-gray-600">Motivo da rejeição</dt>
+            <dt className="muted">Motivo da rejeição</dt>
             <dd>{solicitacao.motivoRejeicao}</dd>
           </div>
         )}
         {solicitacao.motivoRecusaPagamento && (
           <div>
-            <dt className="text-sm text-gray-600">Motivo da recusa do pagamento</dt>
+            <dt className="muted">Motivo da recusa do pagamento</dt>
             <dd>{solicitacao.motivoRecusaPagamento}</dd>
           </div>
         )}
         {solicitacao.comprador && (
           <div>
-            <dt className="text-sm text-gray-600">Comprador</dt>
+            <dt className="muted">Comprador</dt>
             <dd>{solicitacao.comprador.nome}</dd>
           </div>
         )}
         {solicitacao.notaFiscalUrl && (
           <div>
-            <dt className="text-sm text-gray-600">Nota fiscal/comprovante</dt>
+            <dt className="muted">Nota fiscal/comprovante</dt>
             <dd>
               {notaFiscalUrlAssinada ? (
                 <a
                   href={notaFiscalUrlAssinada}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline"
+                  className="link"
                 >
                   Baixar anexo
                 </a>
@@ -134,13 +136,13 @@ export function DetalhesSolicitacao({
         )}
         {solicitacao.fornecedorDocumento && (
           <div>
-            <dt className="text-sm text-gray-600">CNPJ/CPF do fornecedor</dt>
+            <dt className="muted">CNPJ/CPF do fornecedor</dt>
             <dd>{solicitacao.fornecedorDocumento}</dd>
           </div>
         )}
         {solicitacao.metodoPagamento && (
           <div>
-            <dt className="text-sm text-gray-600">Método de pagamento</dt>
+            <dt className="muted">Método de pagamento</dt>
             <dd>
               {METODO_PAGAMENTO_LEGIVEL[solicitacao.metodoPagamento] ??
                 solicitacao.metodoPagamento}
@@ -149,20 +151,20 @@ export function DetalhesSolicitacao({
         )}
         {solicitacao.dadosPagamento && (
           <div>
-            <dt className="text-sm text-gray-600">Dados de pagamento</dt>
+            <dt className="muted">Dados de pagamento</dt>
             <dd>{solicitacao.dadosPagamento}</dd>
           </div>
         )}
         {solicitacao.comprovantePagamentoUrl && (
           <div>
-            <dt className="text-sm text-gray-600">Comprovante de pagamento</dt>
+            <dt className="muted">Comprovante de pagamento</dt>
             <dd>
               {comprovantePagamentoUrlAssinada ? (
                 <a
                   href={comprovantePagamentoUrlAssinada}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline"
+                  className="link"
                 >
                   Baixar comprovante
                 </a>

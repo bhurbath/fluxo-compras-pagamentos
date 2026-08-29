@@ -16,45 +16,44 @@ export default async function DepartamentosPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Departamentos</h1>
+        <h1 className="page-title">Departamentos</h1>
         <Link
           href="/admin/departamentos/novo"
-          className="rounded bg-blue-600 px-4 py-2 text-white"
+          className="btn-primary"
         >
           Novo departamento
         </Link>
       </div>
 
       {departamentos.length === 0 ? (
-        <p>Nenhum departamento cadastrado ainda.</p>
+        <p className="muted">Nenhum departamento cadastrado ainda.</p>
       ) : (
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b">
-              <th className="p-2">Nome</th>
-              <th className="p-2">Responsável</th>
-              <th className="p-2">Diretor</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {departamentos.map((departamento) => (
-              <tr key={departamento.id} className="border-b">
-                <td className="p-2">{departamento.nome}</td>
-                <td className="p-2">{departamento.responsavel.nome}</td>
-                <td className="p-2">{departamento.diretor.nome}</td>
-                <td className="p-2">
-                  <Link
-                    href={`/admin/departamentos/${departamento.id}`}
-                    className="underline"
-                  >
-                    Editar
-                  </Link>
-                </td>
+        <div className="panel" style={{ padding: "0.5rem 1.25rem" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Responsável</th>
+                <th>Diretor</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {departamentos.map((departamento) => (
+                <tr key={departamento.id}>
+                  <td>{departamento.nome}</td>
+                  <td>{departamento.responsavel.nome}</td>
+                  <td>{departamento.diretor.nome}</td>
+                  <td className="text-right">
+                    <Link href={`/admin/departamentos/${departamento.id}`} className="link">
+                      Editar
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

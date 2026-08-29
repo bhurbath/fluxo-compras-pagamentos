@@ -21,13 +21,13 @@ export function MatrizForm({
 }) {
   return (
     <form action={action} className="flex flex-col gap-3 max-w-sm">
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Departamento
         <select
           name="departamentoId"
           defaultValue={defaultValues?.departamentoId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {departamentos.map((d) => (
@@ -37,13 +37,13 @@ export function MatrizForm({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Tipo de compra
         <select
           name="tipoCompraId"
           defaultValue={defaultValues?.tipoCompraId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {tiposCompra.map((t) => (
@@ -53,13 +53,13 @@ export function MatrizForm({
           ))}
         </select>
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Comprador
         <select
           name="compradorId"
           defaultValue={defaultValues?.compradorId ?? ""}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         >
           <option value="">Selecione</option>
           {funcionarios.map((f) => (
@@ -69,7 +69,7 @@ export function MatrizForm({
           ))}
         </select>
       </label>
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+      <button type="submit" className="btn-primary">
         {submitLabel}
       </button>
     </form>

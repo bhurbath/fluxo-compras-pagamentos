@@ -12,3 +12,17 @@ export const STATUS_LEGIVEL: Record<string, string> = {
   PAGAMENTO_RECUSADO: "Pagamento recusado",
   PAGO: "Pago",
 };
+
+// Tom visual do status na UI (ver StatusPill) — mesma ideia do
+// STATUS_LEGIVEL acima, só que mapeando para uma cor em vez de um texto.
+export const STATUS_TONE: Record<string, "progress" | "success" | "danger" | undefined> = {
+  RASCUNHO: undefined,
+  ENVIADO: "progress",
+  AGUARDANDO_NIVEL2: "progress",
+  APROVADO: "progress",
+  REJEITADO: "danger",
+  COMPRA_CONFIRMADA: "progress",
+  AGUARDANDO_PAGAMENTO: "progress",
+  PAGAMENTO_RECUSADO: "danger",
+  PAGO: "success",
+};

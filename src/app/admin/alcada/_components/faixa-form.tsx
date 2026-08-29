@@ -9,7 +9,7 @@ export function FaixaForm({
 }) {
   return (
     <form action={action} className="flex flex-col gap-3 max-w-sm">
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Valor mínimo (R$)
         <input
           name="valorMin"
@@ -18,10 +18,10 @@ export function FaixaForm({
           min="0"
           defaultValue={defaultValues?.valorMin}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex flex-col gap-1">
+      <label className="field">
         Valor máximo (R$) — deixe em branco para &quot;sem limite&quot;
         <input
           name="valorMax"
@@ -29,10 +29,10 @@ export function FaixaForm({
           step="0.01"
           min="0"
           defaultValue={defaultValues?.valorMax}
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <label className="flex items-center gap-2">
+      <label className="field-inline">
         <input
           name="exigeNivel2"
           type="checkbox"
@@ -40,7 +40,7 @@ export function FaixaForm({
         />
         Exige aprovação de nível 2 (diretor)
       </label>
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+      <button type="submit" className="btn-primary">
         {submitLabel}
       </button>
     </form>

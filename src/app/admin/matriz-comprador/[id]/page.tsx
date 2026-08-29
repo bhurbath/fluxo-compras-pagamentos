@@ -34,7 +34,7 @@ export default async function EditarEntradaMatrizPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Editar entrada da matriz</h1>
+      <h1 className="page-title">Editar entrada da matriz</h1>
       <ErroMensagem erro={erro} />
       <MatrizForm
         departamentos={departamentos}

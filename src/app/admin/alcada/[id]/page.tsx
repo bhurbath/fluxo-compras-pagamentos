@@ -27,7 +27,7 @@ export default async function EditarFaixaAlcadaPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Editar faixa de alçada</h1>
+      <h1 className="page-title">Editar faixa de alçada</h1>
       <ErroMensagem erro={erro} />
       <FaixaForm
         defaultValues={{

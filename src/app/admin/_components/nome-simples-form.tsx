@@ -10,17 +10,17 @@ export function NomeSimplesForm({
   submitLabel: string;
 }) {
   return (
-    <form action={action} className="flex flex-col gap-3 max-w-sm">
-      <label className="flex flex-col gap-1">
+    <form action={action} className="flex flex-col gap-3" style={{ maxWidth: "24rem" }}>
+      <label className="field">
         {label}
         <input
           name="nome"
           defaultValue={defaultValues?.nome}
           required
-          className="rounded border px-2 py-1"
+          className="input-field"
         />
       </label>
-      <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
+      <button type="submit" className="btn-primary">
         {submitLabel}
       </button>
     </form>

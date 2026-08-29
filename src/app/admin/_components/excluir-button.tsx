@@ -19,7 +19,7 @@ export function ExcluirButton({
     <button
       type="button"
       disabled={pending}
-      className="underline text-red-600 disabled:opacity-50"
+      className="link-danger"
       onClick={() => {
         if (!confirm(confirmMessage)) return;
         startTransition(() => {

@@ -30,7 +30,7 @@ export default async function EditarDepartamentoPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Editar departamento</h1>
+      <h1 className="page-title">Editar departamento</h1>
       <ErroMensagem erro={erro} />
       <DepartamentoForm
         funcionarios={funcionarios}

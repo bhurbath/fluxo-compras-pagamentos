@@ -27,7 +27,7 @@ export default async function EditarCentroCustoPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Editar centro de custo</h1>
+      <h1 className="page-title">Editar centro de custo</h1>
       <ErroMensagem erro={erro} />
       <NomeSimplesForm
         label="Nome"

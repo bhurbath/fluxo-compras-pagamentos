@@ -17,7 +17,7 @@ export default async function NovaFaixaAlcadaPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Nova faixa de alçada</h1>
+      <h1 className="page-title">Nova faixa de alçada</h1>
       <ErroMensagem erro={erro} />
       <FaixaForm action={criarFaixaAlcadaAction} submitLabel="Criar faixa" />
     </div>

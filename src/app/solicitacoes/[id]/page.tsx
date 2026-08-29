@@ -111,17 +111,19 @@ export default async function SolicitacaoDetalhePage({
   ]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
-      <div className="flex w-full max-w-md flex-col gap-4">
-        <h1 className="text-xl font-semibold">Solicitação de compra</h1>
+    <main className="shell">
+      <div className="shell-inner" style={{ maxWidth: "36rem" }}>
+        <div className="panel flex flex-col gap-4">
+          <h1 className="page-title">Solicitação de compra</h1>
 
-        <ErroMensagem erro={erro} />
+          <ErroMensagem erro={erro} />
 
-        <DetalhesSolicitacao
-          solicitacao={solicitacao}
-          notaFiscalUrlAssinada={notaFiscalUrlAssinada}
-          comprovantePagamentoUrlAssinada={comprovantePagamentoUrlAssinada}
-        />
+          <DetalhesSolicitacao
+            solicitacao={solicitacao}
+            notaFiscalUrlAssinada={notaFiscalUrlAssinada}
+            comprovantePagamentoUrlAssinada={comprovantePagamentoUrlAssinada}
+          />
+        </div>
 
         {podeAprovarNivel1 && (
           <PainelAprovacao
@@ -187,7 +189,7 @@ export default async function SolicitacaoDetalhePage({
           />
         )}
 
-        <Link href="/" className="underline">
+        <Link href="/" className="link">
           Voltar
         </Link>
       </div>

@@ -24,7 +24,7 @@ export default async function NovaEntradaMatrizPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Nova entrada na matriz</h1>
+      <h1 className="page-title">Nova entrada na matriz</h1>
       <ErroMensagem erro={erro} />
       <MatrizForm
         departamentos={departamentos}

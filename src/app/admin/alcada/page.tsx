@@ -22,10 +22,10 @@ export default async function AlcadaPage({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Faixas de alçada</h1>
+        <h1 className="page-title">Faixas de alçada</h1>
         <Link
           href="/admin/alcada/novo"
-          className="rounded bg-blue-600 px-4 py-2 text-white"
+          className="btn-primary"
         >
           Nova faixa
         </Link>
@@ -34,38 +34,42 @@ export default async function AlcadaPage({
       <ErroMensagem erro={erro} />
 
       {faixas.length === 0 ? (
-        <p>Nenhuma faixa de alçada cadastrada ainda.</p>
+        <p className="muted">Nenhuma faixa de alçada cadastrada ainda.</p>
       ) : (
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b">
-              <th className="p-2">Valor mínimo</th>
-              <th className="p-2">Valor máximo</th>
-              <th className="p-2">Exige nível 2</th>
-              <th className="p-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {faixas.map((faixa) => (
-              <tr key={faixa.id} className="border-b">
-                <td className="p-2">{formatarReais(faixa.valorMin)}</td>
-                <td className="p-2">
-                  {faixa.valorMax ? formatarReais(faixa.valorMax) : "sem limite"}
-                </td>
-                <td className="p-2">{faixa.exigeNivel2 ? "Sim" : "Não"}</td>
-                <td className="p-2 flex gap-3">
-                  <Link href={`/admin/alcada/${faixa.id}`} className="underline">
-                    Editar
-                  </Link>
-                  <ExcluirButton
-                    action={excluirFaixaAlcadaAction.bind(null, faixa.id)}
-                    confirmMessage="Excluir esta faixa de alçada? Essa ação não pode ser desfeita."
-                  />
-                </td>
+        <div className="panel" style={{ padding: "0.5rem 1.25rem" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>Valor mínimo</th>
+                <th>Valor máximo</th>
+                <th>Exige nível 2</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {faixas.map((faixa) => (
+                <tr key={faixa.id}>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {formatarReais(faixa.valorMin)}
+                  </td>
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {faixa.valorMax ? formatarReais(faixa.valorMax) : "sem limite"}
+                  </td>
+                  <td>{faixa.exigeNivel2 ? "Sim" : "Não"}</td>
+                  <td className="flex gap-4 justify-end">
+                    <Link href={`/admin/alcada/${faixa.id}`} className="link">
+                      Editar
+                    </Link>
+                    <ExcluirButton
+                      action={excluirFaixaAlcadaAction.bind(null, faixa.id)}
+                      confirmMessage="Excluir esta faixa de alçada? Essa ação não pode ser desfeita."
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
