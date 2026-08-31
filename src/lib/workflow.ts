@@ -46,7 +46,7 @@ export type CriarSolicitacaoInput = {
   // dados de pagamento já chegam anexados na criação em vez de serem
   // preenchidos depois pelo comprador em enviarParaPagamento.
   semCompra?: boolean;
-  notaFiscalUrl?: string | null;
+  notaFiscalUrls?: string[];
   metodoPagamento?: MetodoPagamento | null;
   dadosPagamento?: string | null;
   fornecedorDocumento?: string | null;
@@ -83,7 +83,7 @@ function validarCriarSolicitacao(input: CriarSolicitacaoInput): void {
     throw new Error("A forma de pagamento é obrigatória.");
   }
   if (input.semCompra) {
-    if (!input.notaFiscalUrl?.trim()) {
+    if (!input.notaFiscalUrls?.length) {
       throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
     }
     if (!input.metodoPagamento || !Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
@@ -155,7 +155,7 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput) {
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
     cotacaoUrl: input.cotacaoUrl?.trim() || null,
     semCompra: input.semCompra ?? false,
-    notaFiscalUrl: input.semCompra ? input.notaFiscalUrl?.trim() || null : null,
+    notaFiscalUrls: input.semCompra ? (input.notaFiscalUrls ?? []) : [],
     metodoPagamento: input.semCompra ? input.metodoPagamento ?? null : null,
     dadosPagamento: input.semCompra ? input.dadosPagamento?.trim() || null : null,
     fornecedorDocumento: input.semCompra ? input.fornecedorDocumento?.trim() || null : null,
@@ -878,10 +878,12 @@ export async function confirmarCompra(id: string, atorId: string) {
 }
 
 export type EnviarParaPagamentoInput = {
-  // Caminho do arquivo no bucket de Storage (ver src/lib/storage.ts), não uma
-  // URL pública — o bucket é privado, então quem exibe o anexo precisa gerar
-  // uma URL assinada a partir desse caminho na hora de renderizar.
-  notaFiscalUrl: string;
+  // Um ou mais caminhos de arquivo no bucket de Storage (ver
+  // src/lib/storage.ts), não URLs públicas — o bucket é privado, então quem
+  // exibe os anexos precisa gerar uma URL assinada a partir de cada caminho
+  // na hora de renderizar. Mais de um porque às vezes há nota fiscal e
+  // boleto para enviar juntos, por exemplo.
+  notaFiscalUrls: string[];
   metodoPagamento: MetodoPagamento;
   dadosPagamento: string;
   fornecedorDocumento: string;
@@ -913,10 +915,10 @@ async function processarEnvioPagamento(
   eventoEnvio: string,
   mensagemStatusInvalido: string
 ) {
-  const notaFiscalUrlTrim = input.notaFiscalUrl.trim();
+  const notaFiscalUrls = input.notaFiscalUrls.map((url) => url.trim()).filter(Boolean);
   const dadosPagamentoTrim = input.dadosPagamento.trim();
   const fornecedorDocumentoTrim = input.fornecedorDocumento.trim();
-  if (!notaFiscalUrlTrim) {
+  if (notaFiscalUrls.length === 0) {
     throw new Error("A nota fiscal/comprovante da compra é obrigatória.");
   }
   if (!Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
@@ -958,7 +960,7 @@ async function processarEnvioPagamento(
     statusOrigem,
     {
       status: StatusSolicitacao.AGUARDANDO_PAGAMENTO,
-      notaFiscalUrl: notaFiscalUrlTrim,
+      notaFiscalUrls,
       metodoPagamento: input.metodoPagamento,
       dadosPagamento: dadosPagamentoTrim,
       fornecedorDocumento: fornecedorDocumentoTrim,

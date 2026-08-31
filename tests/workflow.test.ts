@@ -185,7 +185,7 @@ async function criarSolicitacaoAguardandoPagamento(sufixo: string) {
     await criarSolicitacaoComCompradorDesignado(sufixo);
   await confirmarCompra(solicitacao.id, comprador.id);
   const aguardandoPagamento = await enviarParaPagamento(solicitacao.id, comprador.id, {
-    notaFiscalUrl: `${sufixo}/nota-fiscal.pdf`,
+    notaFiscalUrls: [`${sufixo}/nota-fiscal.pdf`],
     metodoPagamento: "PIX",
     dadosPagamento: "Chave PIX: 12345678900",
     fornecedorDocumento: "12.345.678/0001-99",
@@ -1644,7 +1644,7 @@ describe("workflow: confirmarCompra", () => {
 // passar pela validação dos campos obrigatórios sem testar essa validação em
 // si; os testes que testam essa validação sobrescrevem um campo por vez.
 const INPUT_PAGAMENTO_VALIDO = {
-  notaFiscalUrl: "sol-teste/1700000000000-nota-fiscal.pdf",
+  notaFiscalUrls: ["sol-teste/1700000000000-nota-fiscal.pdf"],
   metodoPagamento: "PIX" as const,
   dadosPagamento: "Chave PIX: 12345678900",
   fornecedorDocumento: "12.345.678/0001-99",
@@ -1682,10 +1682,22 @@ describe("workflow: enviarParaPagamento", () => {
       INPUT_PAGAMENTO_VALIDO
     );
 
-    expect(enviada.notaFiscalUrl).toBe(INPUT_PAGAMENTO_VALIDO.notaFiscalUrl);
+    expect(enviada.notaFiscalUrls).toEqual(INPUT_PAGAMENTO_VALIDO.notaFiscalUrls);
     expect(enviada.metodoPagamento).toBe("PIX");
     expect(enviada.dadosPagamento).toBe(INPUT_PAGAMENTO_VALIDO.dadosPagamento);
     expect(enviada.fornecedorDocumento).toBe(INPUT_PAGAMENTO_VALIDO.fornecedorDocumento);
+  });
+
+  it("grava mais de uma nota fiscal/comprovante quando mais de um arquivo é enviado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("ep1c");
+    await confirmarCompra(solicitacao.id, comprador.id);
+
+    const enviada = await enviarParaPagamento(solicitacao.id, comprador.id, {
+      ...INPUT_PAGAMENTO_VALIDO,
+      notaFiscalUrls: ["ep1c/nota-fiscal.pdf", "ep1c/boleto.pdf"],
+    });
+
+    expect(enviada.notaFiscalUrls).toEqual(["ep1c/nota-fiscal.pdf", "ep1c/boleto.pdf"]);
   });
 
   it("lança erro se a nota fiscal não for informada", async () => {
@@ -1695,7 +1707,7 @@ describe("workflow: enviarParaPagamento", () => {
     await expect(
       enviarParaPagamento(solicitacao.id, comprador.id, {
         ...INPUT_PAGAMENTO_VALIDO,
-        notaFiscalUrl: "  ",
+        notaFiscalUrls: [],
       })
     ).rejects.toThrow();
   });
@@ -1814,12 +1826,12 @@ describe("workflow: reenviarParaPagamento", () => {
 
     const reenviada = await reenviarParaPagamento(solicitacao.id, comprador.id, {
       ...INPUT_PAGAMENTO_VALIDO,
-      notaFiscalUrl: "rv1/nota-fiscal-corrigida.pdf",
+      notaFiscalUrls: ["rv1/nota-fiscal-corrigida.pdf"],
     });
 
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.motivoRecusaPagamento).toBeNull();
-    expect(reenviada.notaFiscalUrl).toBe("rv1/nota-fiscal-corrigida.pdf");
+    expect(reenviada.notaFiscalUrls).toEqual(["rv1/nota-fiscal-corrigida.pdf"]);
   });
 
   it("lança erro se a solicitação não está com pagamento recusado", async () => {
@@ -2248,7 +2260,7 @@ describe("workflow: listarSolicitacoesParaExportar", () => {
 // compra (ver enviarDiretoParaPagamento em src/lib/workflow.ts).
 const CAMPOS_SEM_COMPRA = {
   semCompra: true as const,
-  notaFiscalUrl: "guia.pdf",
+  notaFiscalUrls: ["guia.pdf"],
   metodoPagamento: "PIX" as const,
   dadosPagamento: "Chave PIX: 12345678900",
   fornecedorDocumento: "12.345.678/0001-99",
@@ -2308,15 +2320,15 @@ describe("workflow: solicitação sem compra", () => {
 
     await expect(criarSolicitacao(base)).rejects.toThrow();
     await expect(
-      criarSolicitacao({ ...base, notaFiscalUrl: "guia.pdf" })
+      criarSolicitacao({ ...base, notaFiscalUrls: ["guia.pdf"] })
     ).rejects.toThrow();
     await expect(
-      criarSolicitacao({ ...base, notaFiscalUrl: "guia.pdf", metodoPagamento: "PIX" })
+      criarSolicitacao({ ...base, notaFiscalUrls: ["guia.pdf"], metodoPagamento: "PIX" })
     ).rejects.toThrow();
     await expect(
       criarSolicitacao({
         ...base,
-        notaFiscalUrl: "guia.pdf",
+        notaFiscalUrls: ["guia.pdf"],
         metodoPagamento: "PIX",
         dadosPagamento: "Chave PIX: 123",
       })
@@ -2340,7 +2352,7 @@ describe("workflow: solicitação sem compra", () => {
     });
 
     expect(solicitacao.semCompra).toBe(true);
-    expect(solicitacao.notaFiscalUrl).toBe("guia.pdf");
+    expect(solicitacao.notaFiscalUrls).toEqual(["guia.pdf"]);
     expect(solicitacao.metodoPagamento).toBe("PIX");
     expect(solicitacao.fornecedorDocumento).toBe("12.345.678/0001-99");
   });
@@ -2358,11 +2370,11 @@ describe("workflow: solicitação sem compra", () => {
       descricao: "Compra normal",
       valor: "500",
       ...campos,
-      notaFiscalUrl: "não deveria ser gravado",
+      notaFiscalUrls: ["não deveria ser gravado"],
     });
 
     expect(solicitacao.semCompra).toBe(false);
-    expect(solicitacao.notaFiscalUrl).toBeNull();
+    expect(solicitacao.notaFiscalUrls).toEqual([]);
   });
 
   it("ao ser aprovada (nível 1, sem exigir nível 2), pula direto para AGUARDANDO_PAGAMENTO sem designar comprador", async () => {
@@ -2448,7 +2460,7 @@ describe("workflow: solicitação sem compra", () => {
     const outraPessoa = await criarUsuario("outra-sc8");
     await expect(
       reenviarParaPagamento(recusada.id, outraPessoa.id, {
-        notaFiscalUrl: "guia-nova.pdf",
+        notaFiscalUrls: ["guia-nova.pdf"],
         metodoPagamento: "PIX",
         dadosPagamento: "Chave PIX: nova",
         fornecedorDocumento: "12.345.678/0001-99",
@@ -2456,13 +2468,13 @@ describe("workflow: solicitação sem compra", () => {
     ).rejects.toThrow();
 
     const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
-      notaFiscalUrl: "guia-nova.pdf",
+      notaFiscalUrls: ["guia-nova.pdf"],
       metodoPagamento: "PIX",
       dadosPagamento: "Chave PIX: nova",
       fornecedorDocumento: "12.345.678/0001-99",
     });
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
-    expect(reenviada.notaFiscalUrl).toBe("guia-nova.pdf");
+    expect(reenviada.notaFiscalUrls).toEqual(["guia-nova.pdf"]);
   });
 
   it("lista para o solicitante, em listarPendentesComprador, uma solicitação sem compra recusada", async () => {

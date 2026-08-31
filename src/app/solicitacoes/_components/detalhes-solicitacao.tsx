@@ -12,17 +12,19 @@ const FORMA_PAGAMENTO_LEGIVEL: Record<string, string> = {
 
 export function DetalhesSolicitacao({
   solicitacao,
-  notaFiscalUrlAssinada,
+  notaFiscalUrlsAssinadas,
   comprovantePagamentoUrlAssinada,
   cotacaoUrlAssinada,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
   // geradas pelo Server Component pai a partir dos caminhos guardados em
-  // solicitacao.notaFiscalUrl/comprovantePagamentoUrl/cotacaoUrl (que não são
-  // URLs utilizáveis diretamente) — ver src/lib/storage.ts. null quando não
-  // há anexo ou a URL não pôde ser gerada.
-  notaFiscalUrlAssinada?: string | null;
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrl/cotacaoUrl (que não
+  // são URLs utilizáveis diretamente) — ver src/lib/storage.ts. Cada entrada
+  // de notaFiscalUrlsAssinadas corresponde, na mesma posição, a uma entrada
+  // de solicitacao.notaFiscalUrls; null quando não há anexo ou a URL não
+  // pôde ser gerada.
+  notaFiscalUrlsAssinadas?: (string | null)[];
   comprovantePagamentoUrlAssinada?: string | null;
   cotacaoUrlAssinada?: string | null;
 }) {
@@ -139,22 +141,29 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.comprador.nome}</dd>
           </div>
         )}
-        {solicitacao.notaFiscalUrl && (
+        {solicitacao.notaFiscalUrls.length > 0 && (
           <div>
             <dt className="muted">Nota fiscal/comprovante</dt>
-            <dd>
-              {notaFiscalUrlAssinada ? (
-                <a
-                  href={notaFiscalUrlAssinada}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                >
-                  Baixar anexo
-                </a>
-              ) : (
-                "Link indisponível no momento — atualize a página."
-              )}
+            <dd className="flex flex-col gap-1">
+              {solicitacao.notaFiscalUrls.map((_url, indice) => {
+                const urlAssinada = notaFiscalUrlsAssinadas?.[indice];
+                return (
+                  <span key={indice}>
+                    {urlAssinada ? (
+                      <a
+                        href={urlAssinada}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="link"
+                      >
+                        Baixar anexo{solicitacao.notaFiscalUrls.length > 1 ? ` ${indice + 1}` : ""}
+                      </a>
+                    ) : (
+                      "Link indisponível no momento — atualize a página."
+                    )}
+                  </span>
+                );
+              })}
             </dd>
           </div>
         )}

@@ -21,11 +21,13 @@ export function PainelEnviarPagamento({
         className="flex flex-col gap-2"
       >
         <label className="field">
-          Nota fiscal/comprovante (PDF, JPG ou PNG)
+          Nota fiscal/comprovante (PDF, JPG ou PNG — pode selecionar mais de um arquivo,
+          ex.: nota e boleto)
           <input
             type="file"
             name="notaFiscal"
             accept=".pdf,.jpg,.jpeg,.png"
+            multiple
             required
             className="input-field"
           />

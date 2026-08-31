@@ -105,12 +105,12 @@ export default async function SolicitacaoDetalhePage({
 
   const funcionarios = podeDesignarComprador ? await listarFuncionarios() : null;
 
-  // Independentes entre si (URLs assinadas de três anexos diferentes) — cada
-  // uma é uma chamada de rede real ao Storage, então rodam em paralelo em
+  // Independentes entre si (URLs assinadas de vários anexos) — cada uma é
+  // uma chamada de rede real ao Storage, então rodam todas em paralelo em
   // vez de uma esperar a outra.
-  const [notaFiscalUrlAssinada, comprovantePagamentoUrlAssinada, cotacaoUrlAssinada] =
+  const [notaFiscalUrlsAssinadas, comprovantePagamentoUrlAssinada, cotacaoUrlAssinada] =
     await Promise.all([
-      solicitacao.notaFiscalUrl ? gerarUrlAssinada(solicitacao.notaFiscalUrl) : null,
+      Promise.all(solicitacao.notaFiscalUrls.map((url) => gerarUrlAssinada(url))),
       solicitacao.comprovantePagamentoUrl
         ? gerarUrlAssinada(solicitacao.comprovantePagamentoUrl)
         : null,
@@ -127,7 +127,7 @@ export default async function SolicitacaoDetalhePage({
 
           <DetalhesSolicitacao
             solicitacao={solicitacao}
-            notaFiscalUrlAssinada={notaFiscalUrlAssinada}
+            notaFiscalUrlsAssinadas={notaFiscalUrlsAssinadas}
             comprovantePagamentoUrlAssinada={comprovantePagamentoUrlAssinada}
             cotacaoUrlAssinada={cotacaoUrlAssinada}
           />

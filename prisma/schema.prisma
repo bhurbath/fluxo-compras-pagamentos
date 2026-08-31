@@ -243,7 +243,9 @@ model Solicitacao {
   // point in the flow.
   compradorId             String?
   comprador               Usuario?         @relation("SolicitacoesCompradas", fields: [compradorId], references: [id])
-  notaFiscalUrl           String?
+  // Um ou mais caminhos no bucket de Storage (ver src/lib/storage.ts) — às
+  // vezes há nota fiscal e boleto para enviar juntos, por exemplo.
+  notaFiscalUrls          String[]         @default([])
   fornecedorDocumento     String?
   metodoPagamento         MetodoPagamento?
   dadosPagamento          String?

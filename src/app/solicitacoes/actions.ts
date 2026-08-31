@@ -20,15 +20,27 @@ import {
 } from "@/lib/workflow";
 import { FormaPagamento, MetodoPagamento, type Usuario } from "@prisma/client";
 
-// Anexo já existente (edição de uma solicitação sem compra rejeitada, sem
-// reenvio de um novo arquivo) — ver editarEReenviarAction. Sem isso o
+// Um <input type="file" multiple> manda um File por entrada repetida sob o
+// mesmo name — formData.getAll() (não .get(), que só pega a primeira) é o
+// jeito de ler todas. Faz o upload de cada uma em paralelo.
+async function lerArquivos(formData: FormData, name: string, solicitacaoId: string): Promise<string[]> {
+  const arquivos = formData
+    .getAll(name)
+    .filter((valor): valor is File => valor instanceof File && valor.size > 0);
+  return Promise.all(arquivos.map((arquivo) => uploadAnexo(arquivo, solicitacaoId)));
+}
+
+// Anexos já existentes (edição de uma solicitação sem compra rejeitada, sem
+// reenvio de novos arquivos) — ver editarEReenviarAction. Sem isso o
 // solicitante seria obrigado a reanexar a mesma documentação a cada
-// correção, já que um <input type="file"> nunca vem pré-preenchido.
+// correção, já que um <input type="file"> nunca vem pré-preenchido. Quando
+// vem pelo menos um arquivo novo, ele substitui o conjunto anterior inteiro
+// (não acumula) — mesmo padrão que um <input multiple> já sugere ao usuário.
 async function lerCamposSemCompra(
   formData: FormData,
   solicitacaoId: string,
-  notaFiscalUrlAtual: string | null
-): Promise<Pick<CriarSolicitacaoInput, "metodoPagamento" | "dadosPagamento" | "fornecedorDocumento" | "notaFiscalUrl">> {
+  notaFiscalUrlsAtuais: string[]
+): Promise<Pick<CriarSolicitacaoInput, "metodoPagamento" | "dadosPagamento" | "fornecedorDocumento" | "notaFiscalUrls">> {
   const campos = lerCampos(formData, ["metodoPagamento", "dadosPagamento", "fornecedorDocumento"]);
   exigirTodos(
     campos,
@@ -36,17 +48,14 @@ async function lerCamposSemCompra(
       "para uma solicitação sem compra."
   );
 
-  const notaFiscal = formData.get("notaFiscal");
-  let notaFiscalUrl = notaFiscalUrlAtual;
-  if (notaFiscal instanceof File && notaFiscal.size > 0) {
-    notaFiscalUrl = await uploadAnexo(notaFiscal, solicitacaoId);
-  }
-  if (!notaFiscalUrl) {
+  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  const notaFiscalUrls = enviados.length > 0 ? enviados : notaFiscalUrlsAtuais;
+  if (notaFiscalUrls.length === 0) {
     throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
   }
 
   return {
-    notaFiscalUrl,
+    notaFiscalUrls,
     metodoPagamento: campos.metodoPagamento as MetodoPagamento,
     dadosPagamento: campos.dadosPagamento,
     fornecedorDocumento: campos.fornecedorDocumento,
@@ -80,7 +89,7 @@ async function parseSolicitacaoForm(
   // uploadAnexo em src/lib/storage.ts. Uma solicitação nova ainda não tem id
   // nesse ponto, daí o placeholder.
   solicitacaoIdParaAnexo: string,
-  notaFiscalUrlAtual: string | null = null,
+  notaFiscalUrlsAtuais: string[] = [],
   cotacaoUrlAtual: string | null = null
 ): Promise<CriarSolicitacaoInput> {
   if (!usuario.departamentoId) {
@@ -128,7 +137,7 @@ async function parseSolicitacaoForm(
     cotacaoUrl,
     semCompra,
     ...(semCompra
-      ? await lerCamposSemCompra(formData, solicitacaoIdParaAnexo, notaFiscalUrlAtual)
+      ? await lerCamposSemCompra(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)
       : {}),
   };
 }
@@ -177,7 +186,7 @@ export const editarEReenviarAction = comUsuarioAutenticado(
         usuario,
         formData,
         id,
-        atual?.notaFiscalUrl ?? null,
+        atual?.notaFiscalUrls ?? [],
         atual?.cotacaoUrl ?? null
       );
       await editarSolicitacao(id, usuario.id, input);
@@ -225,15 +234,13 @@ async function lerCamposEnviarPagamento(
     "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios."
   );
 
-  // Arquivo, não texto — lerCampos (que faz String(...)) não serve aqui.
-  const notaFiscal = formData.get("notaFiscal");
-  if (!(notaFiscal instanceof File) || notaFiscal.size === 0) {
+  const notaFiscalUrls = await lerArquivos(formData, "notaFiscal", id);
+  if (notaFiscalUrls.length === 0) {
     throw new Error("A nota fiscal/comprovante da compra é obrigatória.");
   }
 
-  const notaFiscalUrl = await uploadAnexo(notaFiscal, id);
   return {
-    notaFiscalUrl,
+    notaFiscalUrls,
     metodoPagamento: campos.metodoPagamento as MetodoPagamento,
     dadosPagamento: campos.dadosPagamento,
     fornecedorDocumento: campos.fornecedorDocumento,

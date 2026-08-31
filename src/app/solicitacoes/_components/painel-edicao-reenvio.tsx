@@ -37,7 +37,7 @@ export function PainelEdicaoReenvio({
             metodoPagamento: solicitacao.metodoPagamento,
             dadosPagamento: solicitacao.dadosPagamento,
             fornecedorDocumento: solicitacao.fornecedorDocumento,
-            temAnexo: Boolean(solicitacao.notaFiscalUrl),
+            temAnexo: solicitacao.notaFiscalUrls.length > 0,
           }}
           {...listas}
         />

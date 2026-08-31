@@ -222,17 +222,19 @@ export function CamposSolicitacao({
 
       <div className="sem-compra-fields">
         <label className="field">
-          Documentação (nota fiscal, guia — PDF, JPG ou PNG)
+          Documentação (nota fiscal, guia — PDF, JPG ou PNG — pode selecionar mais de um
+          arquivo)
           <input
             type="file"
             name="notaFiscal"
             accept=".pdf,.jpg,.jpeg,.png"
+            multiple
             className="input-field"
           />
           {defaultValues?.temAnexo && (
             <span className="muted-xs">
-              Já existe um anexo desta solicitação — envie um novo arquivo só se quiser
-              substituí-lo.
+              Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
+              substituí-los.
             </span>
           )}
         </label>
