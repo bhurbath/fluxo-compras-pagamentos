@@ -12,6 +12,7 @@ import {
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
+  obterSolicitacao,
   reenviarParaPagamento,
   reenviarSolicitacao,
   type CriarSolicitacaoInput,
@@ -19,14 +20,61 @@ import {
 } from "@/lib/workflow";
 import { FormaPagamento, MetodoPagamento, type Usuario } from "@prisma/client";
 
-function parseSolicitacaoForm(
+// Anexo já existente (edição de uma solicitação sem compra rejeitada, sem
+// reenvio de um novo arquivo) — ver editarEReenviarAction. Sem isso o
+// solicitante seria obrigado a reanexar a mesma documentação a cada
+// correção, já que um <input type="file"> nunca vem pré-preenchido.
+async function lerCamposSemCompra(
+  formData: FormData,
+  solicitacaoId: string,
+  notaFiscalUrlAtual: string | null
+): Promise<Pick<CriarSolicitacaoInput, "metodoPagamento" | "dadosPagamento" | "fornecedorDocumento" | "notaFiscalUrl">> {
+  const campos = lerCampos(formData, ["metodoPagamento", "dadosPagamento", "fornecedorDocumento"]);
+  exigirTodos(
+    campos,
+    "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios " +
+      "para uma solicitação sem compra."
+  );
+
+  const notaFiscal = formData.get("notaFiscal");
+  let notaFiscalUrl = notaFiscalUrlAtual;
+  if (notaFiscal instanceof File && notaFiscal.size > 0) {
+    notaFiscalUrl = await uploadAnexo(notaFiscal, solicitacaoId);
+  }
+  if (!notaFiscalUrl) {
+    throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
+  }
+
+  return {
+    notaFiscalUrl,
+    metodoPagamento: campos.metodoPagamento as MetodoPagamento,
+    dadosPagamento: campos.dadosPagamento,
+    fornecedorDocumento: campos.fornecedorDocumento,
+  };
+}
+
+// O departamento nunca vem do formulário: cada funcionário já tem um
+// departamento fixo no cadastro (ver /admin/funcionarios), então a
+// solicitação sempre herda o do solicitante — nunca é uma escolha dele.
+async function parseSolicitacaoForm(
   usuario: Usuario,
-  formData: FormData
-): CriarSolicitacaoInput {
+  formData: FormData,
+  // Usado só como prefixo do caminho no Storage quando há upload de anexo
+  // (solicitação sem compra) — ver uploadAnexo em src/lib/storage.ts. Uma
+  // solicitação nova ainda não tem id nesse ponto, daí o placeholder.
+  solicitacaoIdParaAnexo: string,
+  notaFiscalUrlAtual: string | null = null
+): Promise<CriarSolicitacaoInput> {
+  if (!usuario.departamentoId) {
+    throw new Error(
+      "Seu usuário ainda não tem um departamento definido — peça ao Financeiro para " +
+        "configurar isso em Cadastros > Funcionários antes de criar uma solicitação."
+    );
+  }
+
   const campos = lerCampos(formData, [
     "descricao",
     "valor",
-    "departamentoId",
     "tipoCompraId",
     "fornecedor",
     "formaPagamento",
@@ -37,17 +85,18 @@ function parseSolicitacaoForm(
   ]);
   exigirTodos(
     campos,
-    "Descrição, valor, departamento, tipo de compra, fornecedor, forma de pagamento, " +
+    "Descrição, valor, tipo de compra, fornecedor, forma de pagamento, " +
       "centro de custo, centro de resultado, conta contábil e empresa são obrigatórios."
   );
 
   const opcionais = lerCampos(formData, ["linkCompra", "informacoesComplementares"]);
+  const semCompra = formData.get("semCompra") === "on";
 
   return {
     solicitanteId: usuario.id,
     descricao: campos.descricao,
     valor: campos.valor,
-    departamentoId: campos.departamentoId,
+    departamentoId: usuario.departamentoId,
     tipoCompraId: campos.tipoCompraId,
     fornecedor: campos.fornecedor,
     formaPagamento: campos.formaPagamento as FormaPagamento,
@@ -57,6 +106,10 @@ function parseSolicitacaoForm(
     empresaId: campos.empresaId,
     linkCompra: opcionais.linkCompra || null,
     informacoesComplementares: opcionais.informacoesComplementares || null,
+    semCompra,
+    ...(semCompra
+      ? await lerCamposSemCompra(formData, solicitacaoIdParaAnexo, notaFiscalUrlAtual)
+      : {}),
   };
 }
 
@@ -64,7 +117,7 @@ export const criarRascunhoAction = comUsuarioAutenticado(
   async (usuario, formData: FormData) => {
     let solicitacao: Awaited<ReturnType<typeof criarSolicitacao>>;
     try {
-      const input = parseSolicitacaoForm(usuario, formData);
+      const input = await parseSolicitacaoForm(usuario, formData, crypto.randomUUID());
       solicitacao = await criarSolicitacao(input);
     } catch (error) {
       redirectComErro("/solicitacoes/nova", toFriendlyError(error));
@@ -78,7 +131,7 @@ export const criarEEnviarAction = comUsuarioAutenticado(
   async (usuario, formData: FormData) => {
     let solicitacao: Awaited<ReturnType<typeof criarSolicitacao>> | null = null;
     try {
-      const input = parseSolicitacaoForm(usuario, formData);
+      const input = await parseSolicitacaoForm(usuario, formData, crypto.randomUUID());
       solicitacao = await criarSolicitacao(input);
       solicitacao = await enviarSolicitacao(solicitacao.id);
     } catch (error) {
@@ -99,7 +152,8 @@ export const criarEEnviarAction = comUsuarioAutenticado(
 export const editarEReenviarAction = comUsuarioAutenticado(
   async (usuario, id: string, formData: FormData) => {
     try {
-      const input = parseSolicitacaoForm(usuario, formData);
+      const atual = await obterSolicitacao(id);
+      const input = await parseSolicitacaoForm(usuario, formData, id, atual?.notaFiscalUrl ?? null);
       await editarSolicitacao(id, usuario.id, input);
       await reenviarSolicitacao(id);
     } catch (error) {

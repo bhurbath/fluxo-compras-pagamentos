@@ -38,6 +38,15 @@ export type CriarSolicitacaoInput = {
   empresaId: string;
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
+  // Encargos, taxas e outras despesas sem etapa de compra (ver
+  // enviarDiretoParaPagamento, abaixo) — quando true, a documentação e os
+  // dados de pagamento já chegam anexados na criação em vez de serem
+  // preenchidos depois pelo comprador em enviarParaPagamento.
+  semCompra?: boolean;
+  notaFiscalUrl?: string | null;
+  metodoPagamento?: MetodoPagamento | null;
+  dadosPagamento?: string | null;
+  fornecedorDocumento?: string | null;
 };
 
 const CAMPOS_OBRIGATORIOS: {
@@ -69,6 +78,20 @@ function validarCriarSolicitacao(input: CriarSolicitacaoInput): void {
   }
   if (!Object.values(FormaPagamento).includes(input.formaPagamento)) {
     throw new Error("A forma de pagamento é obrigatória.");
+  }
+  if (input.semCompra) {
+    if (!input.notaFiscalUrl?.trim()) {
+      throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
+    }
+    if (!input.metodoPagamento || !Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
+      throw new Error("O método de pagamento é obrigatório para uma solicitação sem compra.");
+    }
+    if (!input.dadosPagamento?.trim()) {
+      throw new Error("Os dados de pagamento são obrigatórios para uma solicitação sem compra.");
+    }
+    if (!input.fornecedorDocumento?.trim()) {
+      throw new Error("O CNPJ/CPF do fornecedor é obrigatório para uma solicitação sem compra.");
+    }
   }
 }
 
@@ -127,6 +150,11 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput) {
     empresaId: input.empresaId,
     linkCompra: input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
+    semCompra: input.semCompra ?? false,
+    notaFiscalUrl: input.semCompra ? input.notaFiscalUrl?.trim() || null : null,
+    metodoPagamento: input.semCompra ? input.metodoPagamento ?? null : null,
+    dadosPagamento: input.semCompra ? input.dadosPagamento?.trim() || null : null,
+    fornecedorDocumento: input.semCompra ? input.fornecedorDocumento?.trim() || null : null,
   };
 }
 
@@ -354,6 +382,53 @@ async function notificarTodosFinanceiros(
   );
 }
 
+// Sibling of designarComprador for solicitações sem compra (encargos, taxas
+// — ver CriarSolicitacaoInput.semCompra): a documentação e os dados de
+// pagamento já chegaram anexados na criação, então em vez de designar um
+// comprador a aprovação final pula direto para AGUARDANDO_PAGAMENTO. Mesmos
+// três pontos de chamada que designarComprador (processarEnvio,
+// aprovarNivel1, aprovarNivel2), escolhido no lugar dele quando
+// solicitacao.semCompra é true.
+async function enviarDiretoParaPagamento(solicitacao: {
+  id: string;
+  descricao: string;
+  valor: Prisma.Decimal;
+  solicitante: { email: string; nome: string };
+}): Promise<void> {
+  await atualizarStatusComGuarda(
+    solicitacao.id,
+    StatusSolicitacao.APROVADO,
+    { status: StatusSolicitacao.AGUARDANDO_PAGAMENTO },
+    "Essa solicitação já foi alterada por outra ação enquanto isso."
+  );
+
+  await registrarHistorico(
+    solicitacao.id,
+    "enviado_para_pagamento",
+    null,
+    "Enviado automaticamente para o Financeiro — solicitação sem etapa de compra."
+  );
+
+  await Promise.all([
+    getEmailSender().send({
+      to: solicitacao.solicitante.email,
+      subject: "Solicitação aprovada e enviada para pagamento",
+      html:
+        `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+        `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+        "foi aprovada e enviada ao Financeiro para pagamento.</p>",
+    }),
+    notificarTodosFinanceiros(
+      "Solicitação de pagamento aguardando processamento",
+      (f) =>
+        `<p>Olá, ${f.nome}.</p>` +
+        `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+        "não envolve compra e já está com a documentação anexada, aguardando o " +
+        "processamento do pagamento.</p>"
+    ),
+  ]);
+}
+
 // Runs automatically the moment a solicitação reaches APROVADO (called from
 // processarEnvio, aprovarNivel1, and aprovarNivel2 — the only three places
 // that transition can happen). Looks up matriz_comprador by
@@ -552,7 +627,11 @@ async function processarEnvio(
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
   } else if (resolucao.status === StatusSolicitacao.APROVADO) {
-    await designarComprador(solicitacao);
+    if (solicitacao.semCompra) {
+      await enviarDiretoParaPagamento(solicitacao);
+    } else {
+      await designarComprador(solicitacao);
+    }
   }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -627,8 +706,12 @@ export async function aprovarNivel1(id: string, atorId: string) {
   // desfecho para ele saber; nesse caso quem precisa ser avisado é o
   // diretor, que agora tem uma aprovação de fato pendente.
   if (resolucao.status === StatusSolicitacao.APROVADO) {
-    await notificarSolicitanteAprovado(solicitacao);
-    await designarComprador(solicitacao);
+    if (solicitacao.semCompra) {
+      await enviarDiretoParaPagamento(solicitacao);
+    } else {
+      await notificarSolicitanteAprovado(solicitacao);
+      await designarComprador(solicitacao);
+    }
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
   }
@@ -663,8 +746,12 @@ export async function aprovarNivel2(id: string, atorId: string) {
 
   await registrarHistorico(id, "aprovado", atorId);
 
-  await notificarSolicitanteAprovado(solicitacao);
-  await designarComprador(solicitacao);
+  if (solicitacao.semCompra) {
+    await enviarDiretoParaPagamento(solicitacao);
+  } else {
+    await notificarSolicitanteAprovado(solicitacao);
+    await designarComprador(solicitacao);
+  }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
@@ -825,8 +912,18 @@ async function processarEnvioPagamento(
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
-  if (atorId !== solicitacao.compradorId) {
-    throw new Error("Só o comprador designado pode enviar essa solicitação para pagamento.");
+  // Numa solicitação sem compra não existe comprador designado — quem pode
+  // corrigir e reenviar depois de uma recusa de pagamento é o próprio
+  // solicitante, já que foi ele quem anexou a documentação na criação.
+  const podeEnviar = solicitacao.semCompra
+    ? atorId === solicitacao.solicitanteId
+    : atorId === solicitacao.compradorId;
+  if (!podeEnviar) {
+    throw new Error(
+      solicitacao.semCompra
+        ? "Só o solicitante pode corrigir e reenviar essa solicitação para pagamento."
+        : "Só o comprador designado pode enviar essa solicitação para pagamento."
+    );
   }
   if (solicitacao.status !== statusOrigem) {
     throw new Error(mensagemStatusInvalido);
@@ -918,7 +1015,10 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
 
   const [, solicitacao] = await Promise.all([
     requireFinanceiroAtor(atorId, "Só o Financeiro pode recusar um pagamento."),
-    getDb().solicitacao.findUnique({ where: { id }, include: { comprador: true } }),
+    getDb().solicitacao.findUnique({
+      where: { id },
+      include: { comprador: true, solicitante: true },
+    }),
   ]);
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -926,10 +1026,15 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
   if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
     throw new Error("Só é possível recusar uma solicitação que está aguardando pagamento.");
   }
+  // Numa solicitação sem compra não existe comprador (ver
+  // enviarDiretoParaPagamento) — quem precisa corrigir e reenviar é o
+  // próprio solicitante, então é ele quem é avisado nesse caso.
+  const destinatario = solicitacao.semCompra ? solicitacao.solicitante : solicitacao.comprador;
   // Garantido pelo próprio enviarParaPagamento (exige atorId === compradorId
-  // para entrar em AGUARDANDO_PAGAMENTO) — não deveria acontecer, mas se
-  // acontecer é melhor lançar do que notificar ninguém silenciosamente.
-  if (!solicitacao.comprador) {
+  // para entrar em AGUARDANDO_PAGAMENTO fora do caminho sem compra) — não
+  // deveria acontecer, mas se acontecer é melhor lançar do que notificar
+  // ninguém silenciosamente.
+  if (!destinatario) {
     throw new Error("Essa solicitação não tem um comprador designado.");
   }
 
@@ -943,10 +1048,10 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
   await registrarHistorico(id, "pagamento_recusado", atorId, motivoTrim);
 
   await getEmailSender().send({
-    to: solicitacao.comprador.email,
+    to: destinatario.email,
     subject: "Solicitação de pagamento recusada",
     html:
-      `<p>Olá, ${solicitacao.comprador.nome}.</p>` +
+      `<p>Olá, ${destinatario.nome}.</p>` +
       `<p>O Financeiro recusou o pagamento da solicitação "${solicitacao.descricao}" ` +
       `(${formatarReais(solicitacao.valor)}).</p>` +
       `<p>Motivo: ${motivoTrim}</p>`,
@@ -1036,14 +1141,26 @@ export async function listarMinhasSolicitacoes(solicitanteId: string) {
 export async function listarPendentesComprador(compradorId: string) {
   return getDb().solicitacao.findMany({
     where: {
-      compradorId,
-      status: {
-        in: [
-          StatusSolicitacao.APROVADO,
-          StatusSolicitacao.COMPRA_CONFIRMADA,
-          StatusSolicitacao.PAGAMENTO_RECUSADO,
-        ],
-      },
+      OR: [
+        {
+          compradorId,
+          status: {
+            in: [
+              StatusSolicitacao.APROVADO,
+              StatusSolicitacao.COMPRA_CONFIRMADA,
+              StatusSolicitacao.PAGAMENTO_RECUSADO,
+            ],
+          },
+        },
+        // Solicitação sem compra recusada pelo Financeiro: sem comprador
+        // designado, quem precisa corrigir e reenviar é o próprio
+        // solicitante (ver processarEnvioPagamento em workflow.ts).
+        {
+          semCompra: true,
+          solicitanteId: compradorId,
+          status: StatusSolicitacao.PAGAMENTO_RECUSADO,
+        },
+      ],
     },
     include: { solicitante: true, departamento: true },
     orderBy: { criadoEm: "asc" },

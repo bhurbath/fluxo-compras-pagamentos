@@ -29,8 +29,11 @@ export function DetalhesSolicitacao({
       <dl className="flex flex-col gap-2">
         <div>
           <dt className="muted">Status</dt>
-          <dd style={{ marginTop: "0.2rem" }}>
+          <dd style={{ marginTop: "0.2rem", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
             <StatusPill status={solicitacao.status} />
+            {solicitacao.semCompra && (
+              <span className="status-pill">Sem etapa de compra</span>
+            )}
           </dd>
         </div>
         <div>

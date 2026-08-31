@@ -2090,3 +2090,242 @@ describe("workflow: listarSolicitacoesParaExportar", () => {
     expect(exportada.historico[0]?.ator?.id).toBe(solicitante.id);
   });
 });
+
+// Encargos, taxas e outras despesas sem etapa de compra (ver DNI 0007:
+// ENCARGOS, ANVISA, MOTOBOY) — a documentação e os dados de pagamento já
+// chegam anexados na criação, então a aprovação final pula direto para
+// AGUARDANDO_PAGAMENTO em vez de designação de comprador/confirmação de
+// compra (ver enviarDiretoParaPagamento em src/lib/workflow.ts).
+const CAMPOS_SEM_COMPRA = {
+  semCompra: true as const,
+  notaFiscalUrl: "guia.pdf",
+  metodoPagamento: "PIX" as const,
+  dadosPagamento: "Chave PIX: 12345678900",
+  fornecedorDocumento: "12.345.678/0001-99",
+};
+
+// Cria uma solicitação sem compra já ENVIADO — mesmo papel que
+// criarSolicitacaoEnviada, mas com os campos de semCompra desde a criação.
+async function criarSolicitacaoSemCompraEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-${sufixo}`);
+  const tipo = await criarTipoCompra(`Tipo ${sufixo}`);
+  const campos = await criarCamposObrigatorios(sufixo);
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Pagamento de encargo",
+    valor: overrides.valor ?? "500",
+    ...campos,
+    ...CAMPOS_SEM_COMPRA,
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante };
+}
+
+describe("workflow: solicitação sem compra", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige documentação, método, dados de pagamento e CNPJ/CPF do fornecedor", async () => {
+    const solicitante = await criarUsuario("sc1");
+    const departamento = await criarDepartamento("sc1");
+    const tipo = await criarTipoCompra("Tipo sc1");
+    const campos = await criarCamposObrigatorios("sc1");
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Pagamento de encargo",
+      valor: "500",
+      ...campos,
+      semCompra: true as const,
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow();
+    await expect(
+      criarSolicitacao({ ...base, notaFiscalUrl: "guia.pdf" })
+    ).rejects.toThrow();
+    await expect(
+      criarSolicitacao({ ...base, notaFiscalUrl: "guia.pdf", metodoPagamento: "PIX" })
+    ).rejects.toThrow();
+    await expect(
+      criarSolicitacao({
+        ...base,
+        notaFiscalUrl: "guia.pdf",
+        metodoPagamento: "PIX",
+        dadosPagamento: "Chave PIX: 123",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("grava os campos de pagamento já na criação", async () => {
+    const solicitante = await criarUsuario("sc2");
+    const departamento = await criarDepartamento("sc2");
+    const tipo = await criarTipoCompra("Tipo sc2");
+    const campos = await criarCamposObrigatorios("sc2");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Pagamento de encargo",
+      valor: "500",
+      ...campos,
+      ...CAMPOS_SEM_COMPRA,
+    });
+
+    expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.notaFiscalUrl).toBe("guia.pdf");
+    expect(solicitacao.metodoPagamento).toBe("PIX");
+    expect(solicitacao.fornecedorDocumento).toBe("12.345.678/0001-99");
+  });
+
+  it("não grava os campos de pagamento quando semCompra não é informado", async () => {
+    const solicitante = await criarUsuario("sc3");
+    const departamento = await criarDepartamento("sc3");
+    const tipo = await criarTipoCompra("Tipo sc3");
+    const campos = await criarCamposObrigatorios("sc3");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra normal",
+      valor: "500",
+      ...campos,
+      notaFiscalUrl: "não deveria ser gravado",
+    });
+
+    expect(solicitacao.semCompra).toBe(false);
+    expect(solicitacao.notaFiscalUrl).toBeNull();
+  });
+
+  it("ao ser aprovada (nível 1, sem exigir nível 2), pula direto para AGUARDANDO_PAGAMENTO sem designar comprador", async () => {
+    await criarFaixa("0", null, false);
+    const financeiro = await criarUsuario("fin-sc4");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const { solicitacao, departamento } = await criarSolicitacaoSemCompraEnviada("sc4");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+    expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: financeiro.email }));
+  });
+
+  it("ao ser aprovada com o envio pulando direto para aprovado, também vai direto para AGUARDANDO_PAGAMENTO", async () => {
+    await criarFaixa("0", null, false);
+    const pessoa = await criarUsuario("resp-sc5");
+    const departamento = await criarDepartamento("sc5", { responsavelId: pessoa.id });
+    const tipo = await criarTipoCompra("Tipo sc5");
+    const campos = await criarCamposObrigatorios("sc5");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: pessoa.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Pagamento de encargo",
+      valor: "500",
+      ...campos,
+      ...CAMPOS_SEM_COMPRA,
+    });
+
+    const enviada = await enviarSolicitacao(rascunho.id);
+
+    expect(enviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(enviada.compradorId).toBeNull();
+  });
+
+  it("ao ser aprovada em nível 2, também pula direto para AGUARDANDO_PAGAMENTO", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao, departamento } = await criarSolicitacaoSemCompraEnviada("sc6", {
+      valor: "5000",
+    });
+    const aguardandoNivel2 = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    expect(aguardandoNivel2.status).toBe("AGUARDANDO_NIVEL2");
+
+    const aprovada = await aprovarNivel2(aguardandoNivel2.id, departamento.diretorId);
+
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+  });
+
+  it("registra um histórico direto de aprovado para enviado_para_pagamento", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoSemCompraEnviada("sc7");
+
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: aprovada.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "aprovado",
+      "enviado_para_pagamento",
+    ]);
+  });
+
+  it("permite ao solicitante (não a um comprador) corrigir e reenviar após recusa de pagamento", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento, solicitante } =
+      await criarSolicitacaoSemCompraEnviada("sc8");
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-sc8");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(aprovada.id, financeiro.id, "Guia vencida");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const outraPessoa = await criarUsuario("outra-sc8");
+    await expect(
+      reenviarParaPagamento(recusada.id, outraPessoa.id, {
+        notaFiscalUrl: "guia-nova.pdf",
+        metodoPagamento: "PIX",
+        dadosPagamento: "Chave PIX: nova",
+        fornecedorDocumento: "12.345.678/0001-99",
+      })
+    ).rejects.toThrow();
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrl: "guia-nova.pdf",
+      metodoPagamento: "PIX",
+      dadosPagamento: "Chave PIX: nova",
+      fornecedorDocumento: "12.345.678/0001-99",
+    });
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.notaFiscalUrl).toBe("guia-nova.pdf");
+  });
+
+  it("lista para o solicitante, em listarPendentesComprador, uma solicitação sem compra recusada", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento, solicitante } =
+      await criarSolicitacaoSemCompraEnviada("sc9");
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-sc9");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await recusarPagamento(aprovada.id, financeiro.id, "Guia vencida");
+
+    const pendentes = await listarPendentesComprador(solicitante.id);
+
+    expect(pendentes.map((s) => s.id)).toEqual([aprovada.id]);
+  });
+});

@@ -86,9 +86,14 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.status === StatusSolicitacao.COMPRA_CONFIRMADA &&
     solicitacao.compradorId === usuario.id;
 
+  // Numa solicitação sem compra não existe comprador designado — quem
+  // corrige e reenvia depois de uma recusa é o próprio solicitante (ver
+  // processarEnvioPagamento em src/lib/workflow.ts).
   const podeReenviarParaPagamento =
     solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
-    solicitacao.compradorId === usuario.id;
+    (solicitacao.semCompra
+      ? solicitacao.solicitanteId === usuario.id
+      : solicitacao.compradorId === usuario.id);
 
   const podeAprovarPagamento =
     solicitacao.status === StatusSolicitacao.AGUARDANDO_PAGAMENTO && usuario.flagFinanceiro;

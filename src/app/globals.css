@@ -333,4 +333,26 @@ a {
     background: var(--danger-soft);
     color: var(--danger);
   }
+
+  /* Alternância "solicitação sem compra" no formulário (ver
+     CamposSolicitacao) — puro CSS, sem JS: os campos extras (anexo, método
+     de pagamento, ...) só aparecem com a caixa marcada. */
+  .sem-compra-toggle {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+  }
+
+  .sem-compra-fields {
+    display: none;
+  }
+
+  form:has(#semCompra:checked) .sem-compra-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--accent-soft);
+  }
 }

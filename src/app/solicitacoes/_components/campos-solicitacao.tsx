@@ -1,3 +1,6 @@
+import { MetodoPagamento } from "@prisma/client";
+import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
+
 type Lista = { id: string; nome: string };
 
 const FORMAS_PAGAMENTO = [
@@ -10,10 +13,10 @@ const FORMAS_PAGAMENTO = [
 // buttons — each page supplies its own <form action={...}> and button row,
 // since /solicitacoes/nova needs two submit actions (rascunho/enviar) and
 // the edit-after-rejection section on /solicitacoes/[id] needs only one
-// (salvar e reenviar).
+// (salvar e reenviar). O departamento não é um campo aqui — a solicitação
+// sempre herda o do solicitante (ver parseSolicitacaoForm em actions.ts).
 export function CamposSolicitacao({
   defaultValues,
-  departamentos,
   tiposCompra,
   centrosCusto,
   centrosResultado,
@@ -23,7 +26,6 @@ export function CamposSolicitacao({
   defaultValues?: {
     descricao?: string;
     valor?: string;
-    departamentoId?: string;
     tipoCompraId?: string;
     fornecedor?: string;
     formaPagamento?: string;
@@ -33,8 +35,12 @@ export function CamposSolicitacao({
     empresaId?: string;
     linkCompra?: string | null;
     informacoesComplementares?: string | null;
+    semCompra?: boolean;
+    metodoPagamento?: string | null;
+    dadosPagamento?: string | null;
+    fornecedorDocumento?: string | null;
+    temAnexo?: boolean;
   };
-  departamentos: Lista[];
   tiposCompra: Lista[];
   centrosCusto: Lista[];
   centrosResultado: Lista[];
@@ -63,22 +69,6 @@ export function CamposSolicitacao({
           defaultValue={defaultValues?.valor}
           className="input-field"
         />
-      </label>
-      <label className="field">
-        Departamento
-        <select
-          name="departamentoId"
-          defaultValue={defaultValues?.departamentoId ?? ""}
-          required
-          className="input-field"
-        >
-          <option value="">Selecione</option>
-          {departamentos.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.nome}
-            </option>
-          ))}
-        </select>
       </label>
       <label className="field">
         Tipo de compra
@@ -203,6 +193,67 @@ export function CamposSolicitacao({
           className="input-field"
         />
       </label>
+
+      <label className="field-inline sem-compra-toggle">
+        <input
+          id="semCompra"
+          name="semCompra"
+          type="checkbox"
+          defaultChecked={defaultValues?.semCompra}
+        />
+        Esta solicitação não envolve compra — é só pagamento direto (ex.: encargos, taxas,
+        guias), com a documentação já anexada.
+      </label>
+
+      <div className="sem-compra-fields">
+        <label className="field">
+          Documentação (nota fiscal, guia — PDF, JPG ou PNG)
+          <input
+            type="file"
+            name="notaFiscal"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="input-field"
+          />
+          {defaultValues?.temAnexo && (
+            <span className="muted-xs">
+              Já existe um anexo desta solicitação — envie um novo arquivo só se quiser
+              substituí-lo.
+            </span>
+          )}
+        </label>
+        <label className="field">
+          CNPJ/CPF do fornecedor
+          <input
+            type="text"
+            name="fornecedorDocumento"
+            defaultValue={defaultValues?.fornecedorDocumento ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Método de pagamento
+          <select
+            name="metodoPagamento"
+            defaultValue={defaultValues?.metodoPagamento ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {Object.values(MetodoPagamento).map((valor) => (
+              <option key={valor} value={valor}>
+                {METODO_PAGAMENTO_LEGIVEL[valor]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Dados de pagamento (chave PIX, dados bancários, etc.)
+          <textarea
+            name="dadosPagamento"
+            defaultValue={defaultValues?.dadosPagamento ?? ""}
+            className="input-field"
+          />
+        </label>
+      </div>
     </>
   );
 }

@@ -14,12 +14,15 @@ export function PainelEdicaoReenvio({
   return (
     <div className="card-block">
       <h2 className="section-title">Editar e reenviar</h2>
-      <form action={action.bind(null, solicitacao.id)} className="flex flex-col gap-3">
+      <form
+        action={action.bind(null, solicitacao.id)}
+        className="flex flex-col gap-3"
+        encType="multipart/form-data"
+      >
         <CamposSolicitacao
           defaultValues={{
             descricao: solicitacao.descricao,
             valor: solicitacao.valor.toString(),
-            departamentoId: solicitacao.departamentoId,
             tipoCompraId: solicitacao.tipoCompraId,
             fornecedor: solicitacao.fornecedor,
             formaPagamento: solicitacao.formaPagamento,
@@ -29,6 +32,11 @@ export function PainelEdicaoReenvio({
             empresaId: solicitacao.empresaId,
             linkCompra: solicitacao.linkCompra,
             informacoesComplementares: solicitacao.informacoesComplementares,
+            semCompra: solicitacao.semCompra,
+            metodoPagamento: solicitacao.metodoPagamento,
+            dadosPagamento: solicitacao.dadosPagamento,
+            fornecedorDocumento: solicitacao.fornecedorDocumento,
+            temAnexo: Boolean(solicitacao.notaFiscalUrl),
           }}
           {...listas}
         />

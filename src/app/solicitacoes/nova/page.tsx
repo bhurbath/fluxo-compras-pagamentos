@@ -26,11 +26,8 @@ export default async function NovaSolicitacaoPage({
 
           <ErroMensagem erro={erro} />
 
-          <form className="flex flex-col gap-3">
-            <CamposSolicitacao
-              defaultValues={{ departamentoId: usuario.departamentoId ?? "" }}
-              {...listas}
-            />
+          <form className="flex flex-col gap-3" encType="multipart/form-data">
+            <CamposSolicitacao {...listas} />
             <div className="flex gap-3" style={{ marginTop: "0.25rem" }}>
               <button
                 type="submit"

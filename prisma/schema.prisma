@@ -207,6 +207,13 @@ model Solicitacao {
   valor          Decimal           @db.Decimal(12, 2)
   status         StatusSolicitacao @default(RASCUNHO)
 
+  // Encargos, taxas e outras despesas sem etapa de compra (ver DNI 0007:
+  // ENCARGOS, ANVISA, MOTOBOY) — a documentação e os dados de pagamento já
+  // vêm anexados na criação, e a aprovação final pula direto para
+  // AGUARDANDO_PAGAMENTO em vez de passar por designação de comprador e
+  // confirmação de compra (ver enviarDiretoParaPagamento em workflow.ts).
+  semCompra Boolean @default(false)
+
   // Fields matching the company's existing purchase-request template.
   fornecedor                String
   formaPagamento            FormaPagamento
