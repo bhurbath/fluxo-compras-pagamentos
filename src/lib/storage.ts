@@ -37,20 +37,19 @@ export async function uploadAnexo(file: File, solicitacaoId: string): Promise<st
   }
 
   const caminho = `${solicitacaoId}/${Date.now()}-${crypto.randomUUID()}.${extensao}`;
-  // O nome original do arquivo (ex: um print de tela com "•" ou outro
-  // caractere fora de Latin-1) nunca é usado no caminho acima, mas o
-  // cliente do Storage ainda lê File.name para montar um cabeçalho HTTP na
-  // requisição de upload — e cabeçalhos só aceitam Latin-1, então um nome
-  // assim derruba o upload inteiro com "Cannot convert argument to a
-  // ByteString...". Reempacota o conteúdo num File com nome sempre seguro;
-  // o nome original nunca é exibido em lugar nenhum do sistema mesmo.
-  const arquivoSeguro = new File([file], `arquivo.${extensao}`, {
-    type: file.type || undefined,
-  });
+  // Manda os bytes crus (Buffer), não o File em si. O cliente do Storage
+  // trata qualquer Blob/File como um caso especial: empacota numa
+  // FormData e usa o nome do arquivo para montar um cabeçalho — e um nome
+  // com "•" ou outro caractere fora de Latin-1 (comum em prints de tela)
+  // derruba o upload inteiro com "Cannot convert argument to a
+  // ByteString...". Um Buffer não é Blob/File, então o cliente cai no
+  // caminho que manda os bytes direto, sem nunca tocar no nome do arquivo
+  // — que também não é usado em nenhum outro lugar do sistema.
+  const bytes = Buffer.from(await file.arrayBuffer());
 
   const { error } = await getStorageClient()
     .storage.from(BUCKET)
-    .upload(caminho, arquivoSeguro, { contentType: file.type || undefined });
+    .upload(caminho, bytes, { contentType: file.type || undefined });
   if (error) {
     throw new Error(`Falha ao enviar o arquivo: ${error.message}`);
   }
