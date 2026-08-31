@@ -43,6 +43,7 @@ Reaproveita o mesmo app registrado no passo 2 — não é preciso criar conta em
 2. Clique em **"Grant admin consent for \<tenant\>"** (precisa de um administrador do tenant).
 3. Defina `EMAIL_FROM` com uma caixa de e-mail real do tenant (ex: `ti@suaempresa.com.br`) — o app passa a poder enviar e-mail **como** essa caixa.
 4. Defina `EMAIL_FINANCEIRO` com a lista de distribuição (ou caixa) que deve receber os avisos de "algo aguardando ação do Financeiro" (ex: `fiscal@suaempresa.com.br`) — não precisa ser o e-mail de um usuário com a flag Financeiro; essa flag continua controlando só quem pode agir no sistema (ver passo 4 abaixo).
+5. Defina `APP_URL` com a URL pública do sistema, sem barra no final (ex: `https://suaempresa.vercel.app`, ou `http://localhost:3000` em desenvolvimento) — usada só para montar o link "Acessar a solicitação no sistema" nos e-mails.
 
 ## 4. Acesso à área de administração (Financeiro)
 

@@ -92,6 +92,7 @@ export function DetalhesSolicitacao({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="link"
+                style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
               >
                 {solicitacao.linkCompra}
               </a>

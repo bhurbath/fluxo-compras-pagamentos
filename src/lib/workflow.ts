@@ -109,6 +109,17 @@ async function registrarHistorico(
   });
 }
 
+// Anexado ao fim de todo e-mail de notificação, para que quem recebe consiga
+// ir direto para a solicitação (e daí para o login, se ainda não estiver
+// autenticado) em vez de precisar navegar até lá a partir da home.
+function linkAcessoHtml(solicitacaoId: string): string {
+  const appUrl = process.env.APP_URL;
+  if (!appUrl) {
+    throw new Error("APP_URL precisa estar definido para montar links nos e-mails.");
+  }
+  return `<p><a href="${appUrl}/solicitacoes/${solicitacaoId}">Acessar a solicitação no sistema</a></p>`;
+}
+
 // Shared by every transition that mutates status (processarEnvio,
 // aprovarNivel1, aprovarNivel2, rejeitar, ...) — the `where` reconfirms the
 // expected starting status, not just `id`, so two concurrent actions on the
@@ -317,6 +328,7 @@ async function resolverEstadoInicial(solicitacao: {
 // arrive at AGUARDANDO_NIVEL2, and the diretor only needs to hear about it
 // once it's actually their turn, not on every submission.
 async function notificarDiretorPendente(solicitacao: {
+  id: string;
   descricao: string;
   valor: Prisma.Decimal;
   solicitante: { nome: string };
@@ -328,13 +340,15 @@ async function notificarDiretorPendente(solicitacao: {
     html:
       `<p>Olá, ${solicitacao.departamento.diretor.nome}.</p>` +
       `<p>${solicitacao.solicitante.nome} enviou a solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>`,
+      `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>` +
+      linkAcessoHtml(solicitacao.id),
   });
 }
 
 // Shared by aprovarNivel1's and aprovarNivel2's final-approval outcome —
 // the only two places a solicitação reaches APROVADO.
 async function notificarSolicitanteAprovado(solicitacao: {
+  id: string;
   descricao: string;
   valor: Prisma.Decimal;
   solicitante: { email: string; nome: string };
@@ -345,14 +359,15 @@ async function notificarSolicitanteAprovado(solicitacao: {
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-      "foi aprovada.</p>",
+      "foi aprovada.</p>" +
+      linkAcessoHtml(solicitacao.id),
   });
 }
 
 // Shared by the automatic (matriz match) and manual (Financeiro-picked)
 // comprador designation paths — same "you've been assigned" email either way.
 async function notificarComprador(
-  solicitacao: { descricao: string; valor: Prisma.Decimal },
+  solicitacao: { id: string; descricao: string; valor: Prisma.Decimal },
   comprador: { email: string; nome: string }
 ): Promise<void> {
   await getEmailSender().send({
@@ -361,7 +376,8 @@ async function notificarComprador(
     html:
       `<p>Olá, ${comprador.nome}.</p>` +
       `<p>Você foi designado para realizar a compra da solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}).</p>`,
+      `(${formatarReais(solicitacao.valor)}).</p>` +
+      linkAcessoHtml(solicitacao.id),
   });
 }
 
@@ -412,14 +428,16 @@ async function enviarDiretoParaPagamento(solicitacao: {
       html:
         `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
         `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "foi aprovada e enviada ao Financeiro para pagamento.</p>",
+        "foi aprovada e enviada ao Financeiro para pagamento.</p>" +
+        linkAcessoHtml(solicitacao.id),
     }),
     notificarTodosFinanceiros(
       "Solicitação de pagamento aguardando processamento",
       "<p>Olá.</p>" +
         `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
         "não envolve compra e já está com a documentação anexada, aguardando o " +
-        "processamento do pagamento.</p>"
+        "processamento do pagamento.</p>" +
+        linkAcessoHtml(solicitacao.id)
     ),
   ]);
 }
@@ -503,7 +521,8 @@ async function designarComprador(solicitacao: {
     "<p>Olá.</p>" +
       `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
       "foi aprovada, mas não há um comprador cadastrado na matriz para essa combinação " +
-      "de departamento e tipo de compra. Designe um comprador manualmente.</p>"
+      "de departamento e tipo de compra. Designe um comprador manualmente.</p>" +
+      linkAcessoHtml(solicitacao.id)
   );
 }
 
@@ -629,7 +648,8 @@ async function processarEnvio(
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-      "foi enviada com sucesso e está em análise.</p>",
+      "foi enviada com sucesso e está em análise.</p>" +
+      linkAcessoHtml(id),
   });
 
   // Só os caminhos ENVIADO/AGUARDANDO_NIVEL2 deixam uma aprovação de fato
@@ -642,7 +662,8 @@ async function processarEnvio(
       html:
         `<p>Olá, ${solicitacao.departamento.responsavel.nome}.</p>` +
         `<p>${solicitacao.solicitante.nome} enviou a solicitação "${solicitacao.descricao}" ` +
-        `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>`,
+        `(${formatarReais(solicitacao.valor)}) e ela está aguardando sua aprovação.</p>` +
+        linkAcessoHtml(id),
     });
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
@@ -835,7 +856,8 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
       "foi rejeitada.</p>" +
-      `<p>Motivo: ${motivoTrim}</p>`,
+      `<p>Motivo: ${motivoTrim}</p>` +
+      linkAcessoHtml(id),
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -871,7 +893,8 @@ export async function confirmarCompra(id: string, atorId: string) {
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>A compra da sua solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}) foi confirmada. Em breve o pagamento será processado.</p>`,
+      `(${formatarReais(solicitacao.valor)}) foi confirmada. Em breve o pagamento será processado.</p>` +
+      linkAcessoHtml(id),
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -981,13 +1004,15 @@ async function processarEnvioPagamento(
       html:
         `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
         `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "foi enviada ao Financeiro para pagamento.</p>",
+        "foi enviada ao Financeiro para pagamento.</p>" +
+        linkAcessoHtml(id),
     }),
     notificarTodosFinanceiros(
       "Solicitação de compra aguardando pagamento",
       "<p>Olá.</p>" +
         `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "teve a compra confirmada e a nota fiscal anexada, e está aguardando o processamento do pagamento.</p>"
+        "teve a compra confirmada e a nota fiscal anexada, e está aguardando o processamento do pagamento.</p>" +
+        linkAcessoHtml(id)
     ),
   ]);
 
@@ -1079,7 +1104,8 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
       `<p>Olá, ${destinatario.nome}.</p>` +
       `<p>O Financeiro recusou o pagamento da solicitação "${solicitacao.descricao}" ` +
       `(${formatarReais(solicitacao.valor)}).</p>` +
-      `<p>Motivo: ${motivoTrim}</p>`,
+      `<p>Motivo: ${motivoTrim}</p>` +
+      linkAcessoHtml(id),
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -1141,7 +1167,8 @@ export async function registrarPagamento(
       (input.comprovanteUrlAssinada
         ? `<p><a href="${input.comprovanteUrlAssinada}">Baixar comprovante</a> ` +
           "(link válido por 7 dias).</p>"
-        : "<p>O comprovante já está disponível na página da solicitação.</p>"),
+        : "<p>O comprovante já está disponível na página da solicitação.</p>") +
+      linkAcessoHtml(id),
   });
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
