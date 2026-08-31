@@ -3,6 +3,10 @@ import { comMensagemDeUsoRestrito, validarNomeObrigatorio } from "@/lib/nome-sim
 
 export type TipoCompraInput = {
   nome: string;
+  // Ver comentário no schema (model TipoCompra) — quando true, a designação
+  // de comprador pula a matriz e a designação manual, indo direto para o
+  // solicitante (ver designarComprador em workflow.ts).
+  compradorEhSolicitante?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -15,14 +19,22 @@ export async function obterTipoCompra(id: string) {
 
 export async function criarTipoCompra(input: TipoCompraInput) {
   validarNomeObrigatorio(input.nome, "do tipo de compra");
-  return getDb().tipoCompra.create({ data: { nome: input.nome.trim() } });
+  return getDb().tipoCompra.create({
+    data: {
+      nome: input.nome.trim(),
+      compradorEhSolicitante: input.compradorEhSolicitante ?? false,
+    },
+  });
 }
 
 export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
   validarNomeObrigatorio(input.nome, "do tipo de compra");
   return getDb().tipoCompra.update({
     where: { id },
-    data: { nome: input.nome.trim() },
+    data: {
+      nome: input.nome.trim(),
+      compradorEhSolicitante: input.compradorEhSolicitante ?? false,
+    },
   });
 }
 

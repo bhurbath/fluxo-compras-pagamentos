@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { excluirTipoCompraAction } from "@/app/admin/actions";
-import { ListaNomeSimples } from "@/app/admin/_components/lista-nome-simples";
 import { AcessoRestrito } from "../_components/acesso-restrito";
+import { ErroMensagem } from "@/app/_components/erro-mensagem";
+import { ExcluirButton } from "../_components/excluir-button";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarTiposCompra } from "@/lib/tipos-compra";
 
@@ -17,15 +19,48 @@ export default async function TiposCompraPage({
   const tipos = await listarTiposCompra();
 
   return (
-    <ListaNomeSimples
-      titulo="Tipos de compra"
-      itens={tipos}
-      basePath="/admin/tipos-compra"
-      novoLabel="Novo tipo"
-      excluirAction={(id) => excluirTipoCompraAction.bind(null, id)}
-      confirmMessage="Excluir este tipo de compra? Não será possível excluir se ele estiver em uso na matriz de comprador."
-      vazioMensagem="Nenhum tipo de compra cadastrado ainda."
-      erro={erro}
-    />
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Tipos de compra</h1>
+        <Link href="/admin/tipos-compra/novo" className="btn-primary">
+          Novo tipo
+        </Link>
+      </div>
+
+      <ErroMensagem erro={erro} />
+
+      {tipos.length === 0 ? (
+        <p className="muted">Nenhum tipo de compra cadastrado ainda.</p>
+      ) : (
+        <div className="panel" style={{ padding: "0.5rem 1.25rem" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Comprador é o solicitante</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tipos.map((tipo) => (
+                <tr key={tipo.id}>
+                  <td>{tipo.nome}</td>
+                  <td>{tipo.compradorEhSolicitante ? "Sim" : "Não"}</td>
+                  <td className="flex gap-4 justify-end">
+                    <Link href={`/admin/tipos-compra/${tipo.id}`} className="link">
+                      Editar
+                    </Link>
+                    <ExcluirButton
+                      action={excluirTipoCompraAction.bind(null, tipo.id)}
+                      confirmMessage="Excluir este tipo de compra? Não será possível excluir se ele estiver em uso na matriz de comprador."
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

@@ -432,7 +432,32 @@ async function designarComprador(solicitacao: {
   tipoCompraId: string;
   descricao: string;
   valor: Prisma.Decimal;
+  solicitanteId: string;
+  solicitante: { email: string; nome: string };
+  tipoCompra: { compradorEhSolicitante: boolean };
 }): Promise<void> {
+  // Alguns tipos de compra (ex: serviços por departamento) são sempre
+  // executados por quem pediu — a matriz não sabe expressar "o comprador é
+  // quem solicitou" (ela mapeia departamento+tipo para uma pessoa fixa), daí
+  // esse atalho checado antes de qualquer lookup na matriz.
+  if (solicitacao.tipoCompra.compradorEhSolicitante) {
+    const { count } = await getDb().solicitacao.updateMany({
+      where: { id: solicitacao.id, compradorId: null },
+      data: { compradorId: solicitacao.solicitanteId },
+    });
+    if (count === 0) {
+      return;
+    }
+    await registrarHistorico(
+      solicitacao.id,
+      "comprador_designado",
+      null,
+      "Designado automaticamente: o comprador é o próprio solicitante (tipo de compra configurado assim)."
+    );
+    await notificarComprador(solicitacao, solicitacao.solicitante);
+    return;
+  }
+
   const entrada = await getDb().matrizComprador.findFirst({
     where: {
       departamentoId: solicitacao.departamentoId,
@@ -562,6 +587,7 @@ async function processarEnvio(
     include: {
       departamento: { include: { responsavel: true, diretor: true } },
       solicitante: true,
+      tipoCompra: true,
     },
   });
   if (!solicitacao) {
@@ -659,7 +685,11 @@ export async function listarPendentesNivel1(responsavelId: string) {
 export async function aprovarNivel1(id: string, atorId: string) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: { include: { diretor: true } }, solicitante: true },
+    include: {
+      departamento: { include: { diretor: true } },
+      solicitante: true,
+      tipoCompra: true,
+    },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -712,7 +742,7 @@ export async function aprovarNivel1(id: string, atorId: string) {
 export async function aprovarNivel2(id: string, atorId: string) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: true, solicitante: true },
+    include: { departamento: true, solicitante: true, tipoCompra: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");

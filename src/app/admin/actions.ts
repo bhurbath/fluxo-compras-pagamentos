@@ -16,7 +16,12 @@ import {
   excluirFaixaAlcada,
   type FaixaAlcadaInput,
 } from "@/lib/alcada";
-import { atualizarTipoCompra, criarTipoCompra, excluirTipoCompra } from "@/lib/tipos-compra";
+import {
+  atualizarTipoCompra,
+  criarTipoCompra,
+  excluirTipoCompra,
+  type TipoCompraInput,
+} from "@/lib/tipos-compra";
 import { atualizarCentroCusto, criarCentroCusto, excluirCentroCusto } from "@/lib/centro-custo";
 import {
   atualizarCentroResultado,
@@ -235,17 +240,53 @@ function criarAcoesNomeSimples(config: {
   return { criarAction, atualizarAction, excluirAction };
 }
 
-export const {
-  criarAction: criarTipoCompraAction,
-  atualizarAction: atualizarTipoCompraAction,
-  excluirAction: excluirTipoCompraAction,
-} = criarAcoesNomeSimples({
-  criar: criarTipoCompra,
-  atualizar: atualizarTipoCompra,
-  excluir: excluirTipoCompra,
-  basePath: "/admin/tipos-compra",
-  mensagemNomeObrigatorio: "O nome do tipo de compra é obrigatório.",
+function parseTipoCompraForm(formData: FormData): TipoCompraInput {
+  const campos = lerCampos(formData, ["nome"]);
+  exigirTodos(campos, "O nome do tipo de compra é obrigatório.");
+  return {
+    nome: campos.nome,
+    compradorEhSolicitante: formData.get("compradorEhSolicitante") === "on",
+  };
+}
+
+export const criarTipoCompraAction = withFinanceiro(async (_usuario, formData: FormData) => {
+  try {
+    const input = parseTipoCompraForm(formData);
+    await criarTipoCompra(input);
+  } catch (error) {
+    redirectComErro("/admin/tipos-compra/novo", toFriendlyError(error));
+  }
+
+  revalidatePath("/admin/tipos-compra");
+  redirect("/admin/tipos-compra");
 });
+
+export const atualizarTipoCompraAction = withFinanceiro(
+  async (_usuario, id: string, formData: FormData) => {
+    try {
+      const input = parseTipoCompraForm(formData);
+      await atualizarTipoCompra(id, input);
+    } catch (error) {
+      redirectComErro(`/admin/tipos-compra/${id}`, toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/tipos-compra");
+    redirect("/admin/tipos-compra");
+  }
+);
+
+export const excluirTipoCompraAction = withFinanceiro(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (_usuario, id: string, _formData: FormData) => {
+    try {
+      await excluirTipoCompra(id);
+    } catch (error) {
+      redirectComErro("/admin/tipos-compra", toFriendlyError(error));
+    }
+
+    revalidatePath("/admin/tipos-compra");
+  }
+);
 
 export const {
   criarAction: criarCentroCustoAction,

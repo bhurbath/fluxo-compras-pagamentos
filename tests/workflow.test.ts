@@ -617,9 +617,14 @@ describe("workflow: enviarSolicitacao", () => {
 
     await enviarSolicitacao(rascunho.id);
 
-    // Só o e-mail de confirmação ao solicitante — ninguém está aguardando
-    // aprovar, já que a etapa foi pulada automaticamente.
-    expect(enviarSpy).toHaveBeenCalledTimes(1);
+    // E-mail de confirmação ao solicitante + aviso ao Financeiro (sem
+    // entrada na matriz para esse tipo, ver designarComprador) — nenhum dos
+    // dois é um e-mail de aprovação pendente, já que essa etapa foi pulada
+    // automaticamente (o solicitante aqui é o próprio responsável).
+    expect(enviarSpy).toHaveBeenCalledTimes(2);
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subject: expect.stringContaining("aguardando sua aprovação") })
+    );
   });
 });
 
@@ -729,7 +734,9 @@ describe("workflow: aprovarNivel1", () => {
 
     await aprovarNivel1(solicitacao.id, departamento.responsavelId);
 
-    expect(enviarSpy).toHaveBeenCalledTimes(1);
+    // Confirmação ao solicitante + aviso ao Financeiro (sem entrada na
+    // matriz para esse tipo, ver designarComprador).
+    expect(enviarSpy).toHaveBeenCalledTimes(2);
     expect(enviarSpy).toHaveBeenCalledWith(
       expect.objectContaining({ to: solicitante.email })
     );
@@ -1163,7 +1170,9 @@ describe("workflow: aprovarNivel2", () => {
 
     await aprovarNivel2(solicitacao.id, departamento.diretorId);
 
-    expect(enviarSpy).toHaveBeenCalledTimes(1);
+    // Confirmação ao solicitante + aviso ao Financeiro (sem entrada na
+    // matriz para esse tipo, ver designarComprador).
+    expect(enviarSpy).toHaveBeenCalledTimes(2);
     expect(enviarSpy).toHaveBeenCalledWith(
       expect.objectContaining({ to: solicitante.email })
     );
@@ -1291,6 +1300,112 @@ describe("workflow: designarComprador (automático)", () => {
 
     expect(enviada.status).toBe("APROVADO");
     expect(enviada.compradorId).toBe(comprador.id);
+  });
+
+  it("designa o próprio solicitante quando o tipo de compra está configurado assim", async () => {
+    await criarFaixa("0", null, false);
+    const departamento = await criarDepartamento("m7");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Tipo m7", compradorEhSolicitante: true },
+    });
+    const solicitante = await criarUsuario("sol-m7");
+    const campos = await criarCamposObrigatorios("m7");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("APROVADO");
+    expect(aprovada.compradorId).toBe(solicitante.id);
+  });
+
+  it("notifica o solicitante como comprador designado quando o tipo de compra está configurado assim", async () => {
+    await criarFaixa("0", null, false);
+    const departamento = await criarDepartamento("m8");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Tipo m8", compradorEhSolicitante: true },
+    });
+    const solicitante = await criarUsuario("sol-m8");
+    const campos = await criarCamposObrigatorios("m8");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: solicitante.email }));
+  });
+
+  it("grava um evento de histórico ao designar o solicitante como comprador", async () => {
+    await criarFaixa("0", null, false);
+    const departamento = await criarDepartamento("m9");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Tipo m9", compradorEhSolicitante: true },
+    });
+    const solicitante = await criarUsuario("sol-m9");
+    const campos = await criarCamposObrigatorios("m9");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: aprovada.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "aprovado",
+      "comprador_designado",
+    ]);
+  });
+
+  it("prioriza compradorEhSolicitante sobre uma entrada na matriz", async () => {
+    await criarFaixa("0", null, false);
+    const outroComprador = await criarUsuario("comp-m10");
+    const departamento = await criarDepartamento("m10");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Tipo m10", compradorEhSolicitante: true },
+    });
+    await criarEntradaMatriz(departamento.id, tipo.id, outroComprador.id);
+    const solicitante = await criarUsuario("sol-m10");
+    const campos = await criarCamposObrigatorios("m10");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teste",
+      valor: "500",
+      ...campos,
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(aprovada.compradorId).toBe(solicitante.id);
   });
 });
 

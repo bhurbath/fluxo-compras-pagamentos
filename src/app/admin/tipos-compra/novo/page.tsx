@@ -1,5 +1,5 @@
 import { criarTipoCompraAction } from "@/app/admin/actions";
-import { NomeSimplesForm } from "@/app/admin/_components/nome-simples-form";
+import { TipoCompraForm } from "../_components/tipo-compra-form";
 import { AcessoRestrito } from "../../_components/acesso-restrito";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
@@ -19,11 +19,7 @@ export default async function NovoTipoCompraPage({
     <div className="flex flex-col gap-4">
       <h1 className="page-title">Novo tipo de compra</h1>
       <ErroMensagem erro={erro} />
-      <NomeSimplesForm
-        label="Nome"
-        action={criarTipoCompraAction}
-        submitLabel="Criar tipo"
-      />
+      <TipoCompraForm action={criarTipoCompraAction} submitLabel="Criar tipo" />
     </div>
   );
 }

@@ -85,6 +85,12 @@ model TipoCompra {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  // Quando true, a designação de comprador (ver designarComprador em
+  // workflow.ts) pula a matriz de comprador e a designação manual: o
+  // comprador é sempre o próprio solicitante, já que é ele quem vai
+  // executar a contratação (ex: serviços por departamento).
+  compradorEhSolicitante Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.

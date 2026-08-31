@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { atualizarTipoCompraAction } from "@/app/admin/actions";
-import { NomeSimplesForm } from "@/app/admin/_components/nome-simples-form";
+import { TipoCompraForm } from "../_components/tipo-compra-form";
 import { AcessoRestrito } from "../../_components/acesso-restrito";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
@@ -29,9 +29,11 @@ export default async function EditarTipoCompraPage({
     <div className="flex flex-col gap-4">
       <h1 className="page-title">Editar tipo de compra</h1>
       <ErroMensagem erro={erro} />
-      <NomeSimplesForm
-        label="Nome"
-        defaultValues={{ nome: tipo.nome }}
+      <TipoCompraForm
+        defaultValues={{
+          nome: tipo.nome,
+          compradorEhSolicitante: tipo.compradorEhSolicitante,
+        }}
         action={atualizarTipoCompraAction.bind(null, id)}
         submitLabel="Salvar"
       />
