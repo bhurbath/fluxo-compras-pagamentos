@@ -99,6 +99,18 @@ export default async function Home() {
                       Financeiro
                     </p>
                     <Link
+                      href="/consultar"
+                      className="flex items-center justify-between"
+                      style={{
+                        padding: "0.7rem 0",
+                        borderBottom: "1px solid var(--line-soft)",
+                        fontWeight: 500,
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      Consultar solicitações
+                    </Link>
+                    <Link
                       href="/exportar"
                       className="flex items-center justify-between"
                       style={{

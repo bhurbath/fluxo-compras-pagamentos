@@ -2,21 +2,10 @@ import { NextRequest } from "next/server";
 import type { StatusSolicitacao } from "@prisma/client";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { listarSolicitacoesParaExportar } from "@/lib/workflow";
-import { formatarReais, formatarDataHora } from "@/lib/format";
+import { formatarReais, formatarDataHora, parseDataFiltro } from "@/lib/format";
 import { paraCsv } from "@/lib/csv";
 import { STATUS_LEGIVEL } from "@/app/solicitacoes/_components/status-legivel";
 import { EVENTO_LEGIVEL } from "@/app/solicitacoes/_components/evento-legivel";
-
-// yyyy-mm-dd (o formato de <input type="date">) → início ou fim do dia
-// local, validado. Retorna undefined para vazio, null para uma data
-// inválida (ex: query string adulterada) — o chamador decide o que fazer
-// com cada caso.
-function parseData(valor: string | null, limite: "inicio" | "fim"): Date | null | undefined {
-  if (!valor) return undefined;
-  const hora = limite === "inicio" ? "T00:00:00.000" : "T23:59:59.999";
-  const data = new Date(`${valor}${hora}`);
-  return Number.isNaN(data.getTime()) ? null : data;
-}
 
 // Reconstrói quem aprovou em cada nível a partir do histórico, em vez de
 // usar departamento.responsavel/diretor atuais — ver o comentário em
@@ -66,8 +55,8 @@ export async function GET(request: NextRequest) {
     return new Response("Status inválido.", { status: 400 });
   }
 
-  const de = parseData(searchParams.get("de"), "inicio");
-  const ate = parseData(searchParams.get("ate"), "fim");
+  const de = parseDataFiltro(searchParams.get("de"), "inicio");
+  const ate = parseDataFiltro(searchParams.get("ate"), "fim");
   if (de === null || ate === null) {
     return new Response("Data inválida.", { status: 400 });
   }
