@@ -59,3 +59,22 @@ export async function atribuirDepartamento(
     data: { departamentoId },
   });
 }
+
+// Única forma de conceder a flag Financeiro pela UI — antes só existia via
+// scripts/set-financeiro.ts (necessário para conceder a primeira, já que
+// nada mais poderia). Impede remover a própria flag: sem isso, alguém
+// poderia se trancar fora do /admin sem ter mais como se auto-corrigir pela
+// UI, precisando do script de novo.
+export async function alternarFlagFinanceiro(
+  usuarioId: string,
+  valor: boolean,
+  atorId: string
+) {
+  if (usuarioId === atorId && !valor) {
+    throw new Error("Não é possível remover a própria flag Financeiro.");
+  }
+  return getDb().usuario.update({
+    where: { id: usuarioId },
+    data: { flagFinanceiro: valor },
+  });
+}

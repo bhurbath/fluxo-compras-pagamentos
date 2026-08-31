@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetDb, testDb } from "./helpers/db";
 import {
+  alternarFlagFinanceiro,
   atribuirDepartamento,
   atualizarDepartamento,
   criarDepartamento,
@@ -162,5 +163,41 @@ describe("departamentos", () => {
   it("retorna null ao buscar um departamento inexistente", async () => {
     const departamento = await obterDepartamento("id-inexistente");
     expect(departamento).toBeNull();
+  });
+
+  it("concede a flag Financeiro a outro funcionário", async () => {
+    const ator = await criarUsuario("ator");
+    const alvo = await criarUsuario("alvo");
+
+    const atualizado = await alternarFlagFinanceiro(alvo.id, true, ator.id);
+
+    expect(atualizado.flagFinanceiro).toBe(true);
+  });
+
+  it("remove a flag Financeiro de outro funcionário", async () => {
+    const ator = await criarUsuario("ator2");
+    const alvo = await criarUsuario("alvo2");
+    await alternarFlagFinanceiro(alvo.id, true, ator.id);
+
+    const atualizado = await alternarFlagFinanceiro(alvo.id, false, ator.id);
+
+    expect(atualizado.flagFinanceiro).toBe(false);
+  });
+
+  it("não permite remover a própria flag Financeiro", async () => {
+    const usuario = await criarUsuario("proprio");
+    await alternarFlagFinanceiro(usuario.id, true, "outro-id-qualquer");
+
+    await expect(alternarFlagFinanceiro(usuario.id, false, usuario.id)).rejects.toThrow(
+      /própria flag/
+    );
+  });
+
+  it("permite conceder a própria flag Financeiro (só não remover)", async () => {
+    const usuario = await criarUsuario("proprio2");
+
+    const atualizado = await alternarFlagFinanceiro(usuario.id, true, usuario.id);
+
+    expect(atualizado.flagFinanceiro).toBe(true);
   });
 });

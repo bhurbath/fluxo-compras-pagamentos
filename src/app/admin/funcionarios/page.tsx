@@ -1,4 +1,4 @@
-import { atribuirDepartamentoAction } from "@/app/admin/actions";
+import { alternarFinanceiroAction, atribuirDepartamentoAction } from "@/app/admin/actions";
 import { AcessoRestrito } from "../_components/acesso-restrito";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
@@ -9,7 +9,8 @@ export default async function FuncionariosPage({
 }: {
   searchParams: Promise<{ erro?: string }>;
 }) {
-  if (!(await getFinanceiroUsuario())) {
+  const usuarioAtual = await getFinanceiroUsuario();
+  if (!usuarioAtual) {
     return <AcessoRestrito />;
   }
 
@@ -44,7 +45,31 @@ export default async function FuncionariosPage({
                 <tr key={funcionario.id}>
                   <td>{funcionario.nome}</td>
                   <td>{funcionario.email}</td>
-                  <td>{funcionario.flagFinanceiro ? "Sim" : "—"}</td>
+                  <td>
+                    {funcionario.id === usuarioAtual.id ? (
+                      // Ninguém remove a própria flag pela UI (ver
+                      // alternarFlagFinanceiro em lib/departamentos.ts) — sem
+                      // isso dá pra se trancar fora do /admin sem ter mais
+                      // como se auto-corrigir sem o script de novo.
+                      <span className="muted-xs">Sim (você)</span>
+                    ) : (
+                      <form action={alternarFinanceiroAction} className="field-inline">
+                        <input type="hidden" name="usuarioId" value={funcionario.id} />
+                        <input
+                          type="hidden"
+                          name="valor"
+                          value={(!funcionario.flagFinanceiro).toString()}
+                        />
+                        <button
+                          type="submit"
+                          className={funcionario.flagFinanceiro ? "link-danger" : "link"}
+                          style={{ fontSize: "0.875rem" }}
+                        >
+                          {funcionario.flagFinanceiro ? "Remover Financeiro" : "Tornar Financeiro"}
+                        </button>
+                      </form>
+                    )}
+                  </td>
                   <td>
                     <form action={atribuirDepartamentoAction} className="field-inline">
                       <input type="hidden" name="usuarioId" value={funcionario.id} />

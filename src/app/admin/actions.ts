@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { withFinanceiro } from "@/lib/admin/guard";
 import { redirectComErro } from "@/lib/redirect-with-error";
 import {
+  alternarFlagFinanceiro,
   atribuirDepartamento,
   atualizarDepartamento,
   criarDepartamento,
@@ -81,6 +82,19 @@ export const atribuirDepartamentoAction = withFinanceiro(async (_usuario, formDa
   try {
     exigirTodos({ usuarioId }, "Funcionário inválido.");
     await atribuirDepartamento(usuarioId, departamentoId || null);
+  } catch (error) {
+    redirectComErro("/admin/funcionarios", toFriendlyError(error));
+  }
+
+  revalidatePath("/admin/funcionarios");
+});
+
+export const alternarFinanceiroAction = withFinanceiro(async (usuario, formData: FormData) => {
+  const { usuarioId, valor } = lerCampos(formData, ["usuarioId", "valor"]);
+
+  try {
+    exigirTodos({ usuarioId }, "Funcionário inválido.");
+    await alternarFlagFinanceiro(usuarioId, valor === "true", usuario.id);
   } catch (error) {
     redirectComErro("/admin/funcionarios", toFriendlyError(error));
   }
