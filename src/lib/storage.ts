@@ -9,6 +9,28 @@ const EXTENSOES_PERMITIDAS = ["pdf", "jpg", "jpeg", "png"];
 
 let client: SupabaseClient | undefined;
 
+// O cliente do Storage manda essas variáveis cru nos cabeçalhos HTTP
+// (Authorization/apikey) de toda requisição. Um caractere fora de Latin-1
+// nelas (ex: um "•" colado sem querer ao configurar a variável na Vercel)
+// derruba QUALQUER upload com "Cannot convert argument to a ByteString...",
+// já visto duas vezes seguidas mesmo depois de duas correções no envio do
+// arquivo em si — o que só faz sentido se o problema estiver aqui, não no
+// arquivo. Falha cedo com uma mensagem que aponta a variável e a posição,
+// em vez de deixar o erro genérico do fetch se espalhar.
+function assertSomenteLatin1(nomeVariavel: string, valor: string) {
+  for (let i = 0; i < valor.length; i++) {
+    const codigo = valor.codePointAt(i)!;
+    if (codigo > 255) {
+      throw new Error(
+        `A variável de ambiente ${nomeVariavel} tem um caractere inválido (código ${codigo}) ` +
+          `na posição ${i} — provavelmente um caractere especial colado por engano ao configurar ` +
+          `essa variável na Vercel. Corrija o valor em Project Settings > Environment Variables e ` +
+          `faça um novo deploy.`
+      );
+    }
+  }
+}
+
 // Lazy singleton, mesmo padrão de src/lib/email/index.ts — construído no
 // primeiro uso para não exigir as variáveis de ambiente em contextos (ex:
 // testes do módulo workflow) que nunca de fato enviam um anexo.
@@ -21,6 +43,8 @@ function getStorageClient(): SupabaseClient {
         "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY precisam estar definidos para enviar anexos."
       );
     }
+    assertSomenteLatin1("SUPABASE_URL", url);
+    assertSomenteLatin1("SUPABASE_SERVICE_ROLE_KEY", serviceRoleKey);
     client = createClient(url, serviceRoleKey);
   }
   return client;
