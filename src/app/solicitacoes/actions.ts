@@ -53,6 +53,22 @@ async function lerCamposSemCompra(
   };
 }
 
+// Cotação/orçamento — opcional e independente de semCompra (apoia a decisão
+// do aprovador, não é a documentação fiscal da compra em si). Mesmo padrão
+// de "mantém o anexo atual se nenhum arquivo novo vier" que lerCamposSemCompra
+// usa para notaFiscal, para não obrigar reanexar a cada edição.
+async function lerCotacaoUrl(
+  formData: FormData,
+  solicitacaoId: string,
+  cotacaoUrlAtual: string | null
+): Promise<string | null> {
+  const cotacao = formData.get("cotacao");
+  if (cotacao instanceof File && cotacao.size > 0) {
+    return uploadAnexo(cotacao, solicitacaoId);
+  }
+  return cotacaoUrlAtual;
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
 // solicitação sempre herda o do solicitante — nunca é uma escolha dele.
@@ -60,10 +76,12 @@ async function parseSolicitacaoForm(
   usuario: Usuario,
   formData: FormData,
   // Usado só como prefixo do caminho no Storage quando há upload de anexo
-  // (solicitação sem compra) — ver uploadAnexo em src/lib/storage.ts. Uma
-  // solicitação nova ainda não tem id nesse ponto, daí o placeholder.
+  // (cotação, ou a documentação de uma solicitação sem compra) — ver
+  // uploadAnexo em src/lib/storage.ts. Uma solicitação nova ainda não tem id
+  // nesse ponto, daí o placeholder.
   solicitacaoIdParaAnexo: string,
-  notaFiscalUrlAtual: string | null = null
+  notaFiscalUrlAtual: string | null = null,
+  cotacaoUrlAtual: string | null = null
 ): Promise<CriarSolicitacaoInput> {
   if (!usuario.departamentoId) {
     throw new Error(
@@ -91,6 +109,7 @@ async function parseSolicitacaoForm(
 
   const opcionais = lerCampos(formData, ["linkCompra", "informacoesComplementares"]);
   const semCompra = formData.get("semCompra") === "on";
+  const cotacaoUrl = await lerCotacaoUrl(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual);
 
   return {
     solicitanteId: usuario.id,
@@ -106,6 +125,7 @@ async function parseSolicitacaoForm(
     empresaId: campos.empresaId,
     linkCompra: opcionais.linkCompra || null,
     informacoesComplementares: opcionais.informacoesComplementares || null,
+    cotacaoUrl,
     semCompra,
     ...(semCompra
       ? await lerCamposSemCompra(formData, solicitacaoIdParaAnexo, notaFiscalUrlAtual)
@@ -153,7 +173,13 @@ export const editarEReenviarAction = comUsuarioAutenticado(
   async (usuario, id: string, formData: FormData) => {
     try {
       const atual = await obterSolicitacao(id);
-      const input = await parseSolicitacaoForm(usuario, formData, id, atual?.notaFiscalUrl ?? null);
+      const input = await parseSolicitacaoForm(
+        usuario,
+        formData,
+        id,
+        atual?.notaFiscalUrl ?? null,
+        atual?.cotacaoUrl ?? null
+      );
       await editarSolicitacao(id, usuario.id, input);
       await reenviarSolicitacao(id);
     } catch (error) {

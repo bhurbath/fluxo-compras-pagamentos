@@ -346,6 +346,43 @@ describe("workflow: criarSolicitacao", () => {
     expect(historico).toHaveLength(1);
     expect(historico[0].evento).toBe("rascunho_criado");
   });
+
+  it("grava a cotação/orçamento quando informada", async () => {
+    const solicitante = await criarUsuario("sol-cot");
+    const departamento = await criarDepartamento("mkt-cot");
+    const tipo = await criarTipoCompra("Mercado Livre");
+    const campos = await criarCamposObrigatorios("cot");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teclados",
+      valor: "500",
+      ...campos,
+      cotacaoUrl: "cotacoes/orcamento.pdf",
+    });
+
+    expect(solicitacao.cotacaoUrl).toBe("cotacoes/orcamento.pdf");
+  });
+
+  it("não exige cotação/orçamento — fica nula quando não informada", async () => {
+    const solicitante = await criarUsuario("sol-semcot");
+    const departamento = await criarDepartamento("mkt-semcot");
+    const tipo = await criarTipoCompra("Mercado Livre");
+    const campos = await criarCamposObrigatorios("semcot");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teclados",
+      valor: "500",
+      ...campos,
+    });
+
+    expect(solicitacao.cotacaoUrl).toBeNull();
+  });
 });
 
 describe("workflow: enviarSolicitacao", () => {
@@ -922,6 +959,20 @@ describe("workflow: editarSolicitacao", () => {
     expect(editada.valor.toString()).toBe("600");
     expect(editada.tipoCompraId).toBe(novoTipo.id);
     expect(editada.status).toBe("REJEITADO");
+  });
+
+  it("permite anexar/trocar a cotação/orçamento ao editar", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("e-cot");
+    expect(solicitacao.cotacaoUrl).toBeNull();
+
+    const editada = await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { cotacaoUrl: "cotacoes/nova.pdf" })
+    );
+
+    expect(editada.cotacaoUrl).toBe("cotacoes/nova.pdf");
   });
 
   it("mantém o motivo da rejeição visível depois de editar, antes do reenvio", async () => {

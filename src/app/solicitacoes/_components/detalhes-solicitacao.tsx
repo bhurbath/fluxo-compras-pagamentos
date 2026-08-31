@@ -14,15 +14,17 @@ export function DetalhesSolicitacao({
   solicitacao,
   notaFiscalUrlAssinada,
   comprovantePagamentoUrlAssinada,
+  cotacaoUrlAssinada,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
   // geradas pelo Server Component pai a partir dos caminhos guardados em
-  // solicitacao.notaFiscalUrl/comprovantePagamentoUrl (que não são URLs
-  // utilizáveis diretamente) — ver src/lib/storage.ts. null quando não há
-  // anexo ou a URL não pôde ser gerada.
+  // solicitacao.notaFiscalUrl/comprovantePagamentoUrl/cotacaoUrl (que não são
+  // URLs utilizáveis diretamente) — ver src/lib/storage.ts. null quando não
+  // há anexo ou a URL não pôde ser gerada.
   notaFiscalUrlAssinada?: string | null;
   comprovantePagamentoUrlAssinada?: string | null;
+  cotacaoUrlAssinada?: string | null;
 }) {
   return (
     <>
@@ -98,6 +100,25 @@ export function DetalhesSolicitacao({
           <div>
             <dt className="muted">Informações complementares</dt>
             <dd>{solicitacao.informacoesComplementares}</dd>
+          </div>
+        )}
+        {solicitacao.cotacaoUrl && (
+          <div>
+            <dt className="muted">Cotação/orçamento</dt>
+            <dd>
+              {cotacaoUrlAssinada ? (
+                <a
+                  href={cotacaoUrlAssinada}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="link"
+                >
+                  Baixar cotação
+                </a>
+              ) : (
+                "Link indisponível no momento — atualize a página."
+              )}
+            </dd>
           </div>
         )}
         {solicitacao.motivoRejeicao && (

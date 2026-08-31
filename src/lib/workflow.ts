@@ -38,6 +38,9 @@ export type CriarSolicitacaoInput = {
   empresaId: string;
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
+  // Cotação/orçamento opcional, para apoiar a decisão do aprovador — ver
+  // comentário no schema (model Solicitacao).
+  cotacaoUrl?: string | null;
   // Encargos, taxas e outras despesas sem etapa de compra (ver
   // enviarDiretoParaPagamento, abaixo) — quando true, a documentação e os
   // dados de pagamento já chegam anexados na criação em vez de serem
@@ -150,6 +153,7 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput) {
     empresaId: input.empresaId,
     linkCompra: input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
+    cotacaoUrl: input.cotacaoUrl?.trim() || null,
     semCompra: input.semCompra ?? false,
     notaFiscalUrl: input.semCompra ? input.notaFiscalUrl?.trim() || null : null,
     metodoPagamento: input.semCompra ? input.metodoPagamento ?? null : null,

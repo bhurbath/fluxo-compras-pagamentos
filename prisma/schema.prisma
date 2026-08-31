@@ -233,6 +233,10 @@ model Solicitacao {
   empresa                   Empresa         @relation(fields: [empresaId], references: [id])
   linkCompra                String?
   informacoesComplementares String?
+  // Cotação/orçamento anexado pelo solicitante na criação, para apoiar a
+  // decisão do aprovador — opcional, diferente de notaFiscalUrl (que só
+  // existe depois da compra/pagamento).
+  cotacaoUrl                String?
 
   // Populated by later tickets (comprador assignment, purchase, payment) —
   // nullable because they don't exist until the solicitação reaches that

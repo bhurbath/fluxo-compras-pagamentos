@@ -32,6 +32,7 @@ export function PainelEdicaoReenvio({
             empresaId: solicitacao.empresaId,
             linkCompra: solicitacao.linkCompra,
             informacoesComplementares: solicitacao.informacoesComplementares,
+            temCotacao: Boolean(solicitacao.cotacaoUrl),
             semCompra: solicitacao.semCompra,
             metodoPagamento: solicitacao.metodoPagamento,
             dadosPagamento: solicitacao.dadosPagamento,

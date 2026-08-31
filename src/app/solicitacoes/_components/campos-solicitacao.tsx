@@ -35,6 +35,7 @@ export function CamposSolicitacao({
     empresaId?: string;
     linkCompra?: string | null;
     informacoesComplementares?: string | null;
+    temCotacao?: boolean;
     semCompra?: boolean;
     metodoPagamento?: string | null;
     dadosPagamento?: string | null;
@@ -192,6 +193,20 @@ export function CamposSolicitacao({
           defaultValue={defaultValues?.informacoesComplementares ?? ""}
           className="input-field"
         />
+      </label>
+      <label className="field">
+        Cotação/orçamento (opcional — PDF, JPG ou PNG)
+        <input
+          type="file"
+          name="cotacao"
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="input-field"
+        />
+        {defaultValues?.temCotacao && (
+          <span className="muted-xs">
+            Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
+          </span>
+        )}
       </label>
 
       <label className="field-inline sem-compra-toggle">
