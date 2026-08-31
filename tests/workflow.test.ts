@@ -1219,21 +1219,14 @@ describe("workflow: designarComprador (automático)", () => {
     expect(aprovada.compradorId).toBe(comprador.id);
   });
 
-  it("mantém compradorId nulo e notifica o Financeiro quando não há entrada na matriz", async () => {
-    const financeiro1 = await criarUsuario("fin-m2a");
-    const financeiro2 = await criarUsuario("fin-m2b");
-    await testDb.usuario.update({ where: { id: financeiro1.id }, data: { flagFinanceiro: true } });
-    await testDb.usuario.update({ where: { id: financeiro2.id }, data: { flagFinanceiro: true } });
+  it("mantém compradorId nulo e notifica a lista do Financeiro quando não há entrada na matriz", async () => {
     const enviarSpy = vi.spyOn(fake, "send");
 
     const solicitacao = await criarSolicitacaoAprovada("m2");
 
     expect(solicitacao.compradorId).toBeNull();
     expect(enviarSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ to: financeiro1.email })
-    );
-    expect(enviarSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ to: financeiro2.email })
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
     );
   });
 
@@ -1609,16 +1602,10 @@ describe("workflow: enviarParaPagamento", () => {
     expect(historico.at(-1)?.atorId).toBe(comprador.id);
   });
 
-  it("notifica o solicitante e todo o Financeiro por e-mail", async () => {
+  it("notifica o solicitante e a lista do Financeiro por e-mail", async () => {
     const { solicitacao, comprador, solicitante } =
       await criarSolicitacaoComCompradorDesignado("ep6");
     await confirmarCompra(solicitacao.id, comprador.id);
-    const financeiro1 = await criarUsuario("fin1-ep6");
-    const financeiro2 = await criarUsuario("fin2-ep6");
-    await testDb.usuario.updateMany({
-      where: { id: { in: [financeiro1.id, financeiro2.id] } },
-      data: { flagFinanceiro: true },
-    });
     const enviarSpy = vi.spyOn(fake, "send");
     enviarSpy.mockClear();
 
@@ -1628,10 +1615,7 @@ describe("workflow: enviarParaPagamento", () => {
       expect.objectContaining({ to: solicitante.email })
     );
     expect(enviarSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ to: financeiro1.email })
-    );
-    expect(enviarSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ to: financeiro2.email })
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
     );
   });
 
@@ -2217,8 +2201,6 @@ describe("workflow: solicitação sem compra", () => {
 
   it("ao ser aprovada (nível 1, sem exigir nível 2), pula direto para AGUARDANDO_PAGAMENTO sem designar comprador", async () => {
     await criarFaixa("0", null, false);
-    const financeiro = await criarUsuario("fin-sc4");
-    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
     const { solicitacao, departamento } = await criarSolicitacaoSemCompraEnviada("sc4");
     const enviarSpy = vi.spyOn(fake, "send");
     enviarSpy.mockClear();
@@ -2227,7 +2209,9 @@ describe("workflow: solicitação sem compra", () => {
 
     expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(aprovada.compradorId).toBeNull();
-    expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: financeiro.email }));
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
   });
 
   it("ao ser aprovada com o envio pulando direto para aprovado, também vai direto para AGUARDANDO_PAGAMENTO", async () => {

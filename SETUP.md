@@ -42,6 +42,7 @@ Reaproveita o mesmo app registrado no passo 2 — não é preciso criar conta em
 1. No mesmo app (Azure Portal → App registrations → o app criado no passo 2) → **API permissions** → **Add a permission** → **Microsoft Graph** → **Application permissions** → marque **Mail.Send** → **Add permissions**.
 2. Clique em **"Grant admin consent for \<tenant\>"** (precisa de um administrador do tenant).
 3. Defina `EMAIL_FROM` com uma caixa de e-mail real do tenant (ex: `ti@suaempresa.com.br`) — o app passa a poder enviar e-mail **como** essa caixa.
+4. Defina `EMAIL_FINANCEIRO` com a lista de distribuição (ou caixa) que deve receber os avisos de "algo aguardando ação do Financeiro" (ex: `fiscal@suaempresa.com.br`) — não precisa ser o e-mail de um usuário com a flag Financeiro; essa flag continua controlando só quem pode agir no sistema (ver passo 4 abaixo).
 
 ## 4. Acesso à área de administração (Financeiro)
 

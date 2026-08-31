@@ -361,25 +361,17 @@ async function notificarComprador(
   });
 }
 
-// "Atribuída ao Financeiro" não é um único dono — Financeiro é uma flag em
-// Usuario, não uma pessoa — então isso avisa todo mundo que tem a flag.
-// `montarHtml` fica a cargo de cada chamador porque o conteúdo muda conforme
-// o motivo do aviso (designação pendente, pagamento pendente, ...); só o
-// "buscar todo mundo com a flag e mandar em paralelo" é compartilhado.
-async function notificarTodosFinanceiros(
-  assunto: string,
-  montarHtml: (financeiro: { nome: string }) => string
-): Promise<void> {
-  const financeiros = await getDb().usuario.findMany({ where: { flagFinanceiro: true } });
-  await Promise.all(
-    financeiros.map((f) =>
-      getEmailSender().send({
-        to: f.email,
-        subject: assunto,
-        html: montarHtml(f),
-      })
-    )
-  );
+// Vai para a lista de distribuição do Financeiro (EMAIL_FINANCEIRO), não
+// para os usuários com a flag Financeiro individualmente — a flag continua
+// controlando quem pode agir no sistema (registrar/recusar pagamento,
+// designar comprador manualmente, acessar /admin), mas não é mais quem
+// recebe esses avisos por e-mail.
+async function notificarTodosFinanceiros(assunto: string, html: string): Promise<void> {
+  const listaFinanceiro = process.env.EMAIL_FINANCEIRO;
+  if (!listaFinanceiro) {
+    throw new Error("EMAIL_FINANCEIRO precisa estar definido para notificar o Financeiro.");
+  }
+  await getEmailSender().send({ to: listaFinanceiro, subject: assunto, html });
 }
 
 // Sibling of designarComprador for solicitações sem compra (encargos, taxas
@@ -420,8 +412,7 @@ async function enviarDiretoParaPagamento(solicitacao: {
     }),
     notificarTodosFinanceiros(
       "Solicitação de pagamento aguardando processamento",
-      (f) =>
-        `<p>Olá, ${f.nome}.</p>` +
+      "<p>Olá.</p>" +
         `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
         "não envolve compra e já está com a documentação anexada, aguardando o " +
         "processamento do pagamento.</p>"
@@ -480,8 +471,7 @@ async function designarComprador(solicitacao: {
   );
   await notificarTodosFinanceiros(
     "Solicitação aguardando designação de comprador",
-    (f) =>
-      `<p>Olá, ${f.nome}.</p>` +
+    "<p>Olá.</p>" +
       `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
       "foi aprovada, mas não há um comprador cadastrado na matriz para essa combinação " +
       "de departamento e tipo de compra. Designe um comprador manualmente.</p>"
@@ -959,8 +949,7 @@ async function processarEnvioPagamento(
     }),
     notificarTodosFinanceiros(
       "Solicitação de compra aguardando pagamento",
-      (f) =>
-        `<p>Olá, ${f.nome}.</p>` +
+      "<p>Olá.</p>" +
         `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
         "teve a compra confirmada e a nota fiscal anexada, e está aguardando o processamento do pagamento.</p>"
     ),
