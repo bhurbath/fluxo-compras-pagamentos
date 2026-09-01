@@ -360,7 +360,20 @@ a {
      CamposSolicitacao) — mesmo padrão puro-CSS acima, mas a condição é a
      option selecionada em Tipo de compra carregar data-despesa-pessoal, não
      uma checkbox. Troca o conjunto de campos "padrão" pelo reduzido de
-     despesa de pessoal. */
+     despesa de pessoal.
+
+     .campos-padrao define seu próprio layout aqui (não classes utilitárias
+     do Tailwind no elemento) de propósito: utilitárias do Tailwind vivem em
+     @layer utilities, que no v4 tem precedência sobre @layer components
+     nesta mesma cascata independente de especificidade — então um
+     `className="campos-padrao flex ..."` nunca conseguiria ser escondido
+     pelo `display: none` abaixo, já que a utilitária sempre venceria. */
+  .campos-padrao {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
   .despesa-pessoal-fields {
     display: none;
     flex-direction: column;

@@ -138,7 +138,7 @@ export function CamposSolicitacao({
         />
       </label>
 
-      <div className="campos-padrao flex flex-col gap-3">
+      <div className="campos-padrao">
         <label className="field">
           Forma de pagamento
           <select
