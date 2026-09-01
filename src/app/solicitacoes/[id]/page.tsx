@@ -186,6 +186,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             action={reenviarParaPagamentoAction}
             titulo="Corrigir e reenviar para pagamento"
+            despesaPessoal={solicitacao.tipoCompra.despesaPessoal}
           />
         )}
 

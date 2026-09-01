@@ -6,6 +6,7 @@ import { redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
 import { exigirTodos, lerCampos } from "@/lib/form-helpers";
 import { uploadAnexo } from "@/lib/storage";
+import { obterTipoCompra } from "@/lib/tipos-compra";
 import {
   confirmarCompra,
   criarSolicitacao,
@@ -78,16 +79,48 @@ async function lerCotacaoUrl(
   return cotacaoUrlAtual;
 }
 
+// Despesa de pessoal (ver TipoCompra.despesaPessoal) — campos próprios, bem
+// mais enxutos que o resto do formulário. Mesmo padrão de "mantém o anexo
+// atual se nenhum arquivo novo vier" que lerCamposSemCompra usa.
+async function lerCamposDespesaPessoal(
+  formData: FormData,
+  solicitacaoId: string,
+  notaFiscalUrlsAtuais: string[]
+): Promise<
+  Pick<
+    CriarSolicitacaoInput,
+    "categoriaDespesaPessoalId" | "numeroPedido" | "dataVencimento" | "dadosPagamento" | "notaFiscalUrls"
+  >
+> {
+  const campos = lerCampos(formData, [
+    "categoriaDespesaPessoalId",
+    "numeroPedido",
+    "dataVencimento",
+    "dadosPagamentoDespesa",
+  ]);
+  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  return {
+    categoriaDespesaPessoalId: campos.categoriaDespesaPessoalId || null,
+    numeroPedido: campos.numeroPedido || null,
+    dataVencimento: campos.dataVencimento || null,
+    dadosPagamento: campos.dadosPagamentoDespesa || null,
+    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+  };
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
-// solicitação sempre herda o do solicitante — nunca é uma escolha dele.
+// solicitação sempre herda o do solicitante — nunca é uma escolha dele. Qual
+// conjunto de campos ler (padrão ou despesa de pessoal) depende do tipo de
+// compra escolhido, não de uma opção do próprio formulário — ver
+// TipoCompra.despesaPessoal.
 async function parseSolicitacaoForm(
   usuario: Usuario,
   formData: FormData,
   // Usado só como prefixo do caminho no Storage quando há upload de anexo
-  // (cotação, ou a documentação de uma solicitação sem compra) — ver
-  // uploadAnexo em src/lib/storage.ts. Uma solicitação nova ainda não tem id
-  // nesse ponto, daí o placeholder.
+  // (cotação, ou a documentação de uma solicitação sem compra/despesa de
+  // pessoal) — ver uploadAnexo em src/lib/storage.ts. Uma solicitação nova
+  // ainda não tem id nesse ponto, daí o placeholder.
   solicitacaoIdParaAnexo: string,
   notaFiscalUrlsAtuais: string[] = [],
   cotacaoUrlAtual: string | null = null
@@ -99,41 +132,50 @@ async function parseSolicitacaoForm(
     );
   }
 
-  const campos = lerCampos(formData, [
-    "descricao",
-    "valor",
-    "tipoCompraId",
-    "fornecedor",
-    "formaPagamento",
-    "centroCustoId",
-    "centroResultadoId",
-    "contaContabilId",
-    "empresaId",
-  ]);
-  exigirTodos(
-    campos,
-    "Descrição, valor, tipo de compra, fornecedor, forma de pagamento, " +
-      "centro de custo, centro de resultado, conta contábil e empresa são obrigatórios."
-  );
+  const campos = lerCampos(formData, ["descricao", "valor", "tipoCompraId", "fornecedor", "empresaId"]);
+  exigirTodos(campos, "Descrição, valor, tipo de compra, fornecedor e empresa são obrigatórios.");
 
   const opcionais = lerCampos(formData, ["linkCompra", "informacoesComplementares"]);
-  const semCompra = formData.get("semCompra") === "on";
   const cotacaoUrl = await lerCotacaoUrl(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual);
 
-  return {
+  const base = {
     solicitanteId: usuario.id,
     descricao: campos.descricao,
     valor: campos.valor,
     departamentoId: usuario.departamentoId,
     tipoCompraId: campos.tipoCompraId,
     fornecedor: campos.fornecedor,
-    formaPagamento: campos.formaPagamento as FormaPagamento,
-    centroCustoId: campos.centroCustoId,
-    centroResultadoId: campos.centroResultadoId,
-    contaContabilId: campos.contaContabilId,
     empresaId: campos.empresaId,
-    linkCompra: opcionais.linkCompra || null,
     informacoesComplementares: opcionais.informacoesComplementares || null,
+  };
+
+  const tipoCompra = await obterTipoCompra(campos.tipoCompraId);
+  if (tipoCompra?.despesaPessoal) {
+    return {
+      ...base,
+      ...(await lerCamposDespesaPessoal(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
+    };
+  }
+
+  const padrao = lerCampos(formData, [
+    "formaPagamento",
+    "centroCustoId",
+    "centroResultadoId",
+    "contaContabilId",
+  ]);
+  exigirTodos(
+    padrao,
+    "Forma de pagamento, centro de custo, centro de resultado e conta contábil são obrigatórios."
+  );
+  const semCompra = formData.get("semCompra") === "on";
+
+  return {
+    ...base,
+    formaPagamento: padrao.formaPagamento as FormaPagamento,
+    centroCustoId: padrao.centroCustoId,
+    centroResultadoId: padrao.centroResultadoId,
+    contaContabilId: padrao.contaContabilId,
+    linkCompra: opcionais.linkCompra || null,
     cotacaoUrl,
     semCompra,
     ...(semCompra
@@ -218,8 +260,11 @@ export const confirmarCompraAction = comUsuarioAutenticado(
 );
 
 // Compartilhado por enviarParaPagamentoAction e reenviarParaPagamentoAction
-// — mesmos campos, mesma validação, mesmo upload; só a função do workflow
-// que cada uma chama depois muda (qual status de origem é aceito).
+// — mesmos campos, mesmo upload; só a função do workflow que cada uma chama
+// depois muda (qual status de origem é aceito). A obrigatoriedade de método/
+// CNPJ-CPF do fornecedor não é checada aqui: depende de a solicitação ser
+// uma despesa de pessoal ou não (ver processarEnvioPagamento em
+// src/lib/workflow.ts), que só o workflow sabe decidir.
 async function lerCamposEnviarPagamento(
   id: string,
   formData: FormData
@@ -229,10 +274,6 @@ async function lerCamposEnviarPagamento(
     "dadosPagamento",
     "fornecedorDocumento",
   ]);
-  exigirTodos(
-    campos,
-    "Método de pagamento, dados de pagamento e CNPJ/CPF do fornecedor são obrigatórios."
-  );
 
   const notaFiscalUrls = await lerArquivos(formData, "notaFiscal", id);
   if (notaFiscalUrls.length === 0) {
@@ -241,9 +282,9 @@ async function lerCamposEnviarPagamento(
 
   return {
     notaFiscalUrls,
-    metodoPagamento: campos.metodoPagamento as MetodoPagamento,
-    dadosPagamento: campos.dadosPagamento,
-    fornecedorDocumento: campos.fornecedorDocumento,
+    metodoPagamento: (campos.metodoPagamento || null) as MetodoPagamento | null,
+    dadosPagamento: campos.dadosPagamento || null,
+    fornecedorDocumento: campos.fornecedorDocumento || null,
   };
 }
 

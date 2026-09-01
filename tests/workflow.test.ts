@@ -62,8 +62,13 @@ async function criarDepartamento(
   });
 }
 
-async function criarTipoCompra(nome: string) {
-  return testDb.tipoCompra.create({ data: { nome } });
+async function criarTipoCompra(
+  nome: string,
+  overrides: { despesaPessoal?: boolean } = {}
+) {
+  return testDb.tipoCompra.create({
+    data: { nome, despesaPessoal: overrides.despesaPessoal ?? false },
+  });
 }
 
 async function criarFaixa(valorMin: string, valorMax: string | null, exigeNivel2: boolean) {
@@ -2500,5 +2505,200 @@ describe("workflow: solicitação sem compra", () => {
     const pendentes = await listarPendentesComprador(solicitante.id);
 
     expect(pendentes.map((s) => s.id)).toEqual([aprovada.id]);
+  });
+});
+
+// Salários, encargos, benefícios, taxas etc. (ver TipoCompra.despesaPessoal)
+// — formulário reduzido, sem aprovação nem etapa de compra, direto para
+// AGUARDANDO_PAGAMENTO. Mesmo papel que criarSolicitacaoSemCompraEnviada,
+// mas para esse tipo de compra.
+async function criarSolicitacaoDespesaPessoalEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-dp-${sufixo}`);
+  const tipo = await criarTipoCompra(`Despesa Pessoal ${sufixo}`, { despesaPessoal: true });
+  const categoria = await testDb.categoriaDespesaPessoal.create({
+    data: { nome: `Categoria ${sufixo}` },
+  });
+  const empresa = await testDb.empresa.create({ data: { nome: `Empresa dp ${sufixo}` } });
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Vale-transporte",
+    valor: overrides.valor ?? "500",
+    fornecedor: "Fornecedor Teste",
+    empresaId: empresa.id,
+    categoriaDespesaPessoalId: categoria.id,
+    dataVencimento: "2026-09-30",
+    notaFiscalUrls: ["guia.pdf"],
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante, tipo, categoria };
+}
+
+describe("workflow: despesa de pessoal", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige categoria, data de vencimento e ao menos um anexo", async () => {
+    const solicitante = await criarUsuario("dp1");
+    const departamento = await criarDepartamento("dp1");
+    const tipo = await criarTipoCompra("Despesa Pessoal dp1", { despesaPessoal: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa dp1" } });
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Vale-transporte",
+      valor: "500",
+      fornecedor: "Fornecedor Teste",
+      empresaId: empresa.id,
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow(/categoria/);
+    await expect(
+      criarSolicitacao({ ...base, categoriaDespesaPessoalId: "categoria-x" })
+    ).rejects.toThrow(/vencimento/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        categoriaDespesaPessoalId: "categoria-x",
+        dataVencimento: "2026-09-30",
+      })
+    ).rejects.toThrow(/anexo/);
+  });
+
+  it("não exige os campos padrão (centro de custo, resultado, conta contábil, forma de pagamento)", async () => {
+    const solicitante = await criarUsuario("dp2");
+    const departamento = await criarDepartamento("dp2");
+    const tipo = await criarTipoCompra("Despesa Pessoal dp2", { despesaPessoal: true });
+    const categoria = await testDb.categoriaDespesaPessoal.create({
+      data: { nome: "Categoria dp2" },
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa dp2" } });
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Vale-transporte",
+      valor: "500",
+      fornecedor: "Fornecedor Teste",
+      empresaId: empresa.id,
+      categoriaDespesaPessoalId: categoria.id,
+      dataVencimento: "2026-09-30",
+      notaFiscalUrls: ["guia.pdf"],
+    });
+
+    expect(solicitacao.centroCustoId).toBeNull();
+    expect(solicitacao.centroResultadoId).toBeNull();
+    expect(solicitacao.contaContabilId).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+    expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.categoriaDespesaPessoalId).toBe(categoria.id);
+    expect(solicitacao.notaFiscalUrls).toEqual(["guia.pdf"]);
+  });
+
+  it("grava nº do pedido e dados de pagamento, ambos opcionais, e mantém método/CNPJ-CPF nulos", async () => {
+    const solicitante = await criarUsuario("dp3");
+    const departamento = await criarDepartamento("dp3");
+    const tipo = await criarTipoCompra("Despesa Pessoal dp3", { despesaPessoal: true });
+    const categoria = await testDb.categoriaDespesaPessoal.create({
+      data: { nome: "Categoria dp3" },
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa dp3" } });
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Vale-transporte",
+      valor: "500",
+      fornecedor: "Fornecedor Teste",
+      empresaId: empresa.id,
+      categoriaDespesaPessoalId: categoria.id,
+      dataVencimento: "2026-09-30",
+      notaFiscalUrls: ["guia.pdf"],
+      numeroPedido: "PED-123",
+      dadosPagamento: "Chave PIX: 123",
+    });
+
+    expect(solicitacao.numeroPedido).toBe("PED-123");
+    expect(solicitacao.dadosPagamento).toBe("Chave PIX: 123");
+    expect(solicitacao.metodoPagamento).toBeNull();
+    expect(solicitacao.fornecedorDocumento).toBeNull();
+  });
+
+  it("pula aprovação e vai direto para AGUARDANDO_PAGAMENTO, mesmo quando o solicitante não é o responsável e o valor exigiria nível 2", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao } = await criarSolicitacaoDespesaPessoalEnviada("dp4", { valor: "5000" });
+
+    expect(solicitacao.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(solicitacao.compradorId).toBeNull();
+  });
+
+  it("registra um histórico direto de aprovado para enviado_para_pagamento, sem nenhuma etapa de aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoDespesaPessoalEnviada("dp5");
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    // Diferente de "sem compra" (que ainda passa por ENVIADO antes de
+    // auto-aprovar), despesa de pessoal pula ENVIADO por completo — o
+    // próprio resolverEstadoInicial já resolve para APROVADO no envio.
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "aprovado",
+      "enviado_para_pagamento",
+    ]);
+  });
+
+  it("notifica o Financeiro ao ser enviada, nunca um responsável/diretor para aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await criarSolicitacaoDespesaPessoalEnviada("dp6");
+
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subject: expect.stringContaining("aguardando sua aprovação") })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, solicitante } = await criarSolicitacaoDespesaPessoalEnviada("dp7");
+    const financeiro = await criarUsuario("fin-dp7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Guia vencida");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrls: ["guia-nova.pdf"],
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.notaFiscalUrls).toEqual(["guia-nova.pdf"]);
+    expect(reenviada.metodoPagamento).toBeNull();
+    expect(reenviada.fornecedorDocumento).toBeNull();
   });
 });

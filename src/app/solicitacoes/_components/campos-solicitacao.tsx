@@ -2,6 +2,7 @@ import { MetodoPagamento } from "@prisma/client";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 
 type Lista = { id: string; nome: string };
+type TipoCompraLista = { id: string; nome: string; despesaPessoal: boolean };
 
 const FORMAS_PAGAMENTO = [
   { value: "ADIANTAMENTO", label: "Adiantamento" },
@@ -15,6 +16,12 @@ const FORMAS_PAGAMENTO = [
 // the edit-after-rejection section on /solicitacoes/[id] needs only one
 // (salvar e reenviar). O departamento não é um campo aqui — a solicitação
 // sempre herda o do solicitante (ver parseSolicitacaoForm em actions.ts).
+//
+// Alternância "tipo de compra é despesa de pessoal" — puro CSS, sem JS,
+// mesmo padrão de "sem compra" (ver .sem-compra-toggle em globals.css): cada
+// <option> de tipoCompraId carrega data-despesa-pessoal, e o seletor
+// `:has()` no CSS troca os campos "padrão" pelos de despesa de pessoal
+// conforme a opção selecionada no momento.
 export function CamposSolicitacao({
   defaultValues,
   tiposCompra,
@@ -22,16 +29,17 @@ export function CamposSolicitacao({
   centrosResultado,
   contasContabeis,
   empresas,
+  categoriasDespesaPessoal,
 }: {
   defaultValues?: {
     descricao?: string;
     valor?: string;
     tipoCompraId?: string;
     fornecedor?: string;
-    formaPagamento?: string;
-    centroCustoId?: string;
-    centroResultadoId?: string;
-    contaContabilId?: string;
+    formaPagamento?: string | null;
+    centroCustoId?: string | null;
+    centroResultadoId?: string | null;
+    contaContabilId?: string | null;
     empresaId?: string;
     linkCompra?: string | null;
     informacoesComplementares?: string | null;
@@ -41,12 +49,16 @@ export function CamposSolicitacao({
     dadosPagamento?: string | null;
     fornecedorDocumento?: string | null;
     temAnexo?: boolean;
+    categoriaDespesaPessoalId?: string | null;
+    numeroPedido?: string | null;
+    dataVencimento?: string | null;
   };
-  tiposCompra: Lista[];
+  tiposCompra: TipoCompraLista[];
   centrosCusto: Lista[];
   centrosResultado: Lista[];
   contasContabeis: Lista[];
   empresas: Lista[];
+  categoriasDespesaPessoal: Lista[];
 }) {
   return (
     <>
@@ -81,7 +93,11 @@ export function CamposSolicitacao({
         >
           <option value="">Selecione</option>
           {tiposCompra.map((t) => (
-            <option key={t.id} value={t.id}>
+            <option
+              key={t.id}
+              value={t.id}
+              data-despesa-pessoal={t.despesaPessoal ? "true" : undefined}
+            >
               {t.nome}
             </option>
           ))}
@@ -96,70 +112,6 @@ export function CamposSolicitacao({
           defaultValue={defaultValues?.fornecedor}
           className="input-field"
         />
-      </label>
-      <label className="field">
-        Forma de pagamento
-        <select
-          name="formaPagamento"
-          defaultValue={defaultValues?.formaPagamento ?? ""}
-          required
-          className="input-field"
-        >
-          <option value="">Selecione</option>
-          {FORMAS_PAGAMENTO.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        Centro de custo
-        <select
-          name="centroCustoId"
-          defaultValue={defaultValues?.centroCustoId ?? ""}
-          required
-          className="input-field"
-        >
-          <option value="">Selecione</option>
-          {centrosCusto.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        Centro de resultado
-        <select
-          name="centroResultadoId"
-          defaultValue={defaultValues?.centroResultadoId ?? ""}
-          required
-          className="input-field"
-        >
-          <option value="">Selecione</option>
-          {centrosResultado.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        Conta contábil
-        <select
-          name="contaContabilId"
-          defaultValue={defaultValues?.contaContabilId ?? ""}
-          required
-          className="input-field"
-        >
-          <option value="">Selecione</option>
-          {contasContabeis.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
       </label>
       <label className="field">
         Empresa
@@ -178,15 +130,6 @@ export function CamposSolicitacao({
         </select>
       </label>
       <label className="field">
-        Link da compra (opcional)
-        <input
-          name="linkCompra"
-          type="text"
-          defaultValue={defaultValues?.linkCompra ?? ""}
-          className="input-field"
-        />
-      </label>
-      <label className="field">
         Informações complementares (opcional)
         <textarea
           name="informacoesComplementares"
@@ -194,35 +137,200 @@ export function CamposSolicitacao({
           className="input-field"
         />
       </label>
-      <label className="field">
-        Cotação/orçamento (opcional — PDF, JPG ou PNG)
-        <input
-          type="file"
-          name="cotacao"
-          accept=".pdf,.jpg,.jpeg,.png"
-          className="input-field"
-        />
-        {defaultValues?.temCotacao && (
-          <span className="muted-xs">
-            Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
-          </span>
-        )}
-      </label>
 
-      <label className="field-inline sem-compra-toggle">
-        <input
-          id="semCompra"
-          name="semCompra"
-          type="checkbox"
-          defaultChecked={defaultValues?.semCompra}
-        />
-        Esta solicitação não envolve compra — é só pagamento direto (ex.: encargos, taxas,
-        guias), com a documentação já anexada.
-      </label>
-
-      <div className="sem-compra-fields">
+      <div className="campos-padrao flex flex-col gap-3">
         <label className="field">
-          Documentação (nota fiscal, guia — PDF, JPG ou PNG — pode selecionar mais de um
+          Forma de pagamento
+          <select
+            name="formaPagamento"
+            defaultValue={defaultValues?.formaPagamento ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Centro de custo
+          <select
+            name="centroCustoId"
+            defaultValue={defaultValues?.centroCustoId ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {centrosCusto.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Centro de resultado
+          <select
+            name="centroResultadoId"
+            defaultValue={defaultValues?.centroResultadoId ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {centrosResultado.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Conta contábil
+          <select
+            name="contaContabilId"
+            defaultValue={defaultValues?.contaContabilId ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {contasContabeis.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Link da compra (opcional)
+          <input
+            name="linkCompra"
+            type="text"
+            defaultValue={defaultValues?.linkCompra ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Cotação/orçamento (opcional — PDF, JPG ou PNG)
+          <input
+            type="file"
+            name="cotacao"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="input-field"
+          />
+          {defaultValues?.temCotacao && (
+            <span className="muted-xs">
+              Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
+            </span>
+          )}
+        </label>
+
+        <label className="field-inline sem-compra-toggle">
+          <input
+            id="semCompra"
+            name="semCompra"
+            type="checkbox"
+            defaultChecked={defaultValues?.semCompra}
+          />
+          Esta solicitação não envolve compra — é só pagamento direto (ex.: encargos, taxas,
+          guias), com a documentação já anexada.
+        </label>
+
+        <div className="sem-compra-fields">
+          <label className="field">
+            Documentação (nota fiscal, guia — PDF, JPG ou PNG — pode selecionar mais de um
+            arquivo)
+            <input
+              type="file"
+              name="notaFiscal"
+              accept=".pdf,.jpg,.jpeg,.png"
+              multiple
+              className="input-field"
+            />
+            {defaultValues?.temAnexo && (
+              <span className="muted-xs">
+                Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
+                substituí-los.
+              </span>
+            )}
+          </label>
+          <label className="field">
+            CNPJ/CPF do fornecedor
+            <input
+              type="text"
+              name="fornecedorDocumento"
+              defaultValue={defaultValues?.fornecedorDocumento ?? ""}
+              className="input-field"
+            />
+          </label>
+          <label className="field">
+            Método de pagamento
+            <select
+              name="metodoPagamento"
+              defaultValue={defaultValues?.metodoPagamento ?? ""}
+              className="input-field"
+            >
+              <option value="">Selecione</option>
+              {Object.values(MetodoPagamento).map((valor) => (
+                <option key={valor} value={valor}>
+                  {METODO_PAGAMENTO_LEGIVEL[valor]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Dados de pagamento (chave PIX, dados bancários, etc.)
+            <textarea
+              name="dadosPagamento"
+              defaultValue={defaultValues?.dadosPagamento ?? ""}
+              className="input-field"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="despesa-pessoal-fields">
+        <label className="field">
+          Categoria da despesa
+          <select
+            name="categoriaDespesaPessoalId"
+            defaultValue={defaultValues?.categoriaDespesaPessoalId ?? ""}
+            className="input-field"
+          >
+            <option value="">Selecione</option>
+            {categoriasDespesaPessoal.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Nº do pedido (opcional)
+          <input
+            name="numeroPedido"
+            type="text"
+            defaultValue={defaultValues?.numeroPedido ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Data de vencimento
+          <input
+            name="dataVencimento"
+            type="date"
+            defaultValue={defaultValues?.dataVencimento ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Dados de pagamento (opcional — chave PIX, dados bancários, etc.)
+          <textarea
+            name="dadosPagamentoDespesa"
+            defaultValue={defaultValues?.dadosPagamento ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Anexos (nota fiscal, guia, boleto — PDF, JPG ou PNG — pode selecionar mais de um
           arquivo)
           <input
             type="file"
@@ -237,38 +345,6 @@ export function CamposSolicitacao({
               substituí-los.
             </span>
           )}
-        </label>
-        <label className="field">
-          CNPJ/CPF do fornecedor
-          <input
-            type="text"
-            name="fornecedorDocumento"
-            defaultValue={defaultValues?.fornecedorDocumento ?? ""}
-            className="input-field"
-          />
-        </label>
-        <label className="field">
-          Método de pagamento
-          <select
-            name="metodoPagamento"
-            defaultValue={defaultValues?.metodoPagamento ?? ""}
-            className="input-field"
-          >
-            <option value="">Selecione</option>
-            {Object.values(MetodoPagamento).map((valor) => (
-              <option key={valor} value={valor}>
-                {METODO_PAGAMENTO_LEGIVEL[valor]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          Dados de pagamento (chave PIX, dados bancários, etc.)
-          <textarea
-            name="dadosPagamento"
-            defaultValue={defaultValues?.dadosPagamento ?? ""}
-            className="input-field"
-          />
         </label>
       </div>
     </>

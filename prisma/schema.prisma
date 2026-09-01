@@ -91,6 +91,17 @@ model TipoCompra {
   // executar a contratação (ex: serviços por departamento).
   compradorEhSolicitante Boolean @default(false)
 
+  // Quando true, o formulário de solicitação muda inteiramente: só pede
+  // Fornecedor, Categoria de despesa de pessoal, nº do pedido (opcional),
+  // data de vencimento, dados de pagamento (opcional), informações
+  // complementares, valor, Empresa e anexos — sem centro de custo/resultado,
+  // conta contábil ou forma de pagamento. A aprovação é sempre dispensada
+  // (ver resolverEstadoInicial em workflow.ts) e a solicitação já nasce
+  // marcada semCompra, indo direto para AGUARDANDO_PAGAMENTO — são encargos,
+  // benefícios, taxas etc. pagos diretamente pelo Financeiro, sem etapa de
+  // compra nem aprovação.
+  despesaPessoal Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.
@@ -166,6 +177,22 @@ model Empresa {
   @@map("empresas")
 }
 
+// Categoria da despesa quando TipoCompra.despesaPessoal é true (Salários,
+// Adiantamentos, Férias, Rescisões, Benefícios, Taxas Assistenciais, Taxas
+// Sindicais, Encargos, Exames, Entidades de apoio, Planos de Saúde — ver
+// seed) — cadastro simples igual a CentroCusto/CentroResultado/etc.,
+// pré-populado mas editável pelo Financeiro depois.
+model CategoriaDespesaPessoal {
+  id           String   @id @default(cuid())
+  nome         String   @unique
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  solicitacoes Solicitacao[]
+
+  @@map("categorias_despesa_pessoal")
+}
+
 enum FormaPagamento {
   ADIANTAMENTO
   A_VISTA
@@ -220,23 +247,43 @@ model Solicitacao {
   // confirmação de compra (ver enviarDiretoParaPagamento em workflow.ts).
   semCompra Boolean @default(false)
 
-  // Fields matching the company's existing purchase-request template.
+  // Fields matching the company's existing purchase-request template. Todos
+  // opcionais no schema (menos empresaId) porque uma solicitação de despesa
+  // de pessoal (ver TipoCompra.despesaPessoal) não os usa — a obrigatoriedade
+  // de cada um por tipo de solicitação é decidida em validarCriarSolicitacao,
+  // não aqui.
   fornecedor                String
-  formaPagamento            FormaPagamento
-  centroCustoId             String
-  centroCusto               CentroCusto     @relation(fields: [centroCustoId], references: [id])
-  centroResultadoId         String
-  centroResultado           CentroResultado @relation(fields: [centroResultadoId], references: [id])
-  contaContabilId           String
-  contaContabil             ContaContabil   @relation(fields: [contaContabilId], references: [id])
+  formaPagamento            FormaPagamento?
+  // onDelete: Restrict em todo FK opcional abaixo — sem isso, Prisma usa
+  // SET NULL como padrão implícito pra relação opcional, o que faria
+  // excluirCentroCusto/excluirCentroResultado/excluirContaContabil/
+  // excluirCategoriaDespesaPessoal (lib/nome-simples.ts:
+  // comMensagemDeUsoRestrito) silenciosamente apagar a classificação de
+  // solicitações antigas em vez de bloquear a exclusão como sempre fizeram
+  // (quando esses campos ainda eram obrigatórios, a própria constraint NOT
+  // NULL impedia isso).
+  centroCustoId             String?
+  centroCusto               CentroCusto?     @relation(fields: [centroCustoId], references: [id], onDelete: Restrict)
+  centroResultadoId         String?
+  centroResultado           CentroResultado? @relation(fields: [centroResultadoId], references: [id], onDelete: Restrict)
+  contaContabilId           String?
+  contaContabil             ContaContabil?   @relation(fields: [contaContabilId], references: [id], onDelete: Restrict)
   empresaId                 String
-  empresa                   Empresa         @relation(fields: [empresaId], references: [id])
+  empresa                   Empresa          @relation(fields: [empresaId], references: [id])
   linkCompra                String?
   informacoesComplementares String?
   // Cotação/orçamento anexado pelo solicitante na criação, para apoiar a
   // decisão do aprovador — opcional, diferente de notaFiscalUrl (que só
   // existe depois da compra/pagamento).
   cotacaoUrl                String?
+
+  // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria escolhida
+  // pelo solicitante, nº do pedido opcional, e data de vencimento — nenhum
+  // dos três existe fora desse tipo de solicitação.
+  categoriaDespesaPessoalId String?
+  categoriaDespesaPessoal   CategoriaDespesaPessoal? @relation(fields: [categoriaDespesaPessoalId], references: [id], onDelete: Restrict)
+  numeroPedido              String?
+  dataVencimento            DateTime?
 
   // Populated by later tickets (comprador assignment, purchase, payment) —
   // nullable because they don't exist until the solicitação reaches that

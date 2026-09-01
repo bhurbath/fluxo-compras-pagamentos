@@ -15,6 +15,7 @@ export async function obterSolicitacao(id: string) {
       centroResultado: true,
       contaContabil: true,
       empresa: true,
+      categoriaDespesaPessoal: true,
       comprador: true,
       historico: {
         include: { ator: true },
@@ -31,10 +32,13 @@ export type CriarSolicitacaoInput = {
   descricao: string;
   valor: string;
   fornecedor: string;
-  formaPagamento: FormaPagamento;
-  centroCustoId: string;
-  centroResultadoId: string;
-  contaContabilId: string;
+  // Ausentes/ignorados para uma despesa de pessoal (ver
+  // TipoCompra.despesaPessoal) — obrigatórios em qualquer outro tipo de
+  // compra, checado em validarCriarSolicitacao.
+  formaPagamento?: FormaPagamento | null;
+  centroCustoId?: string | null;
+  centroResultadoId?: string | null;
+  contaContabilId?: string | null;
   empresaId: string;
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
@@ -44,12 +48,18 @@ export type CriarSolicitacaoInput = {
   // Encargos, taxas e outras despesas sem etapa de compra (ver
   // enviarDiretoParaPagamento, abaixo) — quando true, a documentação e os
   // dados de pagamento já chegam anexados na criação em vez de serem
-  // preenchidos depois pelo comprador em enviarParaPagamento.
+  // preenchidos depois pelo comprador em enviarParaPagamento. Sempre true,
+  // implicitamente, para uma despesa de pessoal — ver mapCamposSolicitacao.
   semCompra?: boolean;
   notaFiscalUrls?: string[];
   metodoPagamento?: MetodoPagamento | null;
   dadosPagamento?: string | null;
   fornecedorDocumento?: string | null;
+  // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria e
+  // vencimento obrigatórios, nº do pedido opcional.
+  categoriaDespesaPessoalId?: string | null;
+  numeroPedido?: string | null;
+  dataVencimento?: string | null;
 };
 
 const CAMPOS_OBRIGATORIOS: {
@@ -60,13 +70,24 @@ const CAMPOS_OBRIGATORIOS: {
   { chave: "departamentoId", mensagem: "O departamento é obrigatório." },
   { chave: "tipoCompraId", mensagem: "O tipo de compra é obrigatório." },
   { chave: "fornecedor", mensagem: "O fornecedor é obrigatório." },
-  { chave: "centroCustoId", mensagem: "O centro de custo é obrigatório." },
-  { chave: "centroResultadoId", mensagem: "O centro de resultado é obrigatório." },
-  { chave: "contaContabilId", mensagem: "A conta contábil é obrigatória." },
   { chave: "empresaId", mensagem: "A empresa é obrigatória." },
 ];
 
-function validarCriarSolicitacao(input: CriarSolicitacaoInput): void {
+// Só exigidos fora de uma despesa de pessoal (ver TipoCompra.despesaPessoal
+// e validarCriarSolicitacao) — nesse tipo o formulário nem os mostra.
+const CAMPOS_OBRIGATORIOS_PADRAO: {
+  chave: keyof CriarSolicitacaoInput;
+  mensagem: string;
+}[] = [
+  { chave: "centroCustoId", mensagem: "O centro de custo é obrigatório." },
+  { chave: "centroResultadoId", mensagem: "O centro de resultado é obrigatório." },
+  { chave: "contaContabilId", mensagem: "A conta contábil é obrigatória." },
+];
+
+function validarCriarSolicitacao(
+  input: CriarSolicitacaoInput,
+  tipoCompra: { despesaPessoal: boolean }
+): void {
   if (!input.descricao.trim()) {
     throw new Error("A descrição é obrigatória.");
   }
@@ -79,7 +100,29 @@ function validarCriarSolicitacao(input: CriarSolicitacaoInput): void {
       throw new Error(mensagem);
     }
   }
-  if (!Object.values(FormaPagamento).includes(input.formaPagamento)) {
+
+  // Despesa de pessoal tem seu próprio conjunto de campos obrigatórios,
+  // menor e diferente do padrão — nem passa pelos campos contábeis/forma de
+  // pagamento/semCompra abaixo, que essa solicitação nem coleta.
+  if (tipoCompra.despesaPessoal) {
+    if (!input.categoriaDespesaPessoalId?.trim()) {
+      throw new Error("A categoria da despesa é obrigatória.");
+    }
+    if (!input.dataVencimento?.trim()) {
+      throw new Error("A data de vencimento é obrigatória.");
+    }
+    if (!input.notaFiscalUrls?.length) {
+      throw new Error("Pelo menos um anexo é obrigatório para uma despesa de pessoal.");
+    }
+    return;
+  }
+
+  for (const { chave, mensagem } of CAMPOS_OBRIGATORIOS_PADRAO) {
+    if (!String(input[chave] ?? "").trim()) {
+      throw new Error(mensagem);
+    }
+  }
+  if (!input.formaPagamento || !Object.values(FormaPagamento).includes(input.formaPagamento)) {
     throw new Error("A forma de pagamento é obrigatória.");
   }
   if (input.semCompra) {
@@ -149,38 +192,56 @@ async function atualizarStatusComGuarda(
 // The fields both criarSolicitacao and editarSolicitacao write — everything
 // about "the request" except who made it and what status it's in, which
 // each of those two functions owns differently (create sets both fresh;
-// edit changes neither).
-function mapCamposSolicitacao(input: CriarSolicitacaoInput) {
+// edit changes neither). despesaPessoal força semCompra: true mesmo que o
+// formulário (que nem mostra a caixa nesse tipo) não tenha mandado nada —
+// factualmente correto (não existe etapa de compra) e é o que faz todo o
+// resto do workflow (designarComprador, recusarPagamento, ...) já tratar
+// essa solicitação do jeito certo sem precisar de mais nenhuma checagem
+// espalhada por aí.
+function mapCamposSolicitacao(input: CriarSolicitacaoInput, despesaPessoal: boolean) {
+  const semCompra = despesaPessoal || (input.semCompra ?? false);
   return {
     departamentoId: input.departamentoId,
     tipoCompraId: input.tipoCompraId,
     descricao: input.descricao.trim(),
     valor: input.valor,
     fornecedor: input.fornecedor.trim(),
-    formaPagamento: input.formaPagamento,
-    centroCustoId: input.centroCustoId,
-    centroResultadoId: input.centroResultadoId,
-    contaContabilId: input.contaContabilId,
+    formaPagamento: despesaPessoal ? null : input.formaPagamento,
+    centroCustoId: despesaPessoal ? null : input.centroCustoId,
+    centroResultadoId: despesaPessoal ? null : input.centroResultadoId,
+    contaContabilId: despesaPessoal ? null : input.contaContabilId,
     empresaId: input.empresaId,
-    linkCompra: input.linkCompra?.trim() || null,
+    linkCompra: despesaPessoal ? null : input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
-    cotacaoUrl: input.cotacaoUrl?.trim() || null,
-    semCompra: input.semCompra ?? false,
-    notaFiscalUrls: input.semCompra ? (input.notaFiscalUrls ?? []) : [],
-    metodoPagamento: input.semCompra ? input.metodoPagamento ?? null : null,
-    dadosPagamento: input.semCompra ? input.dadosPagamento?.trim() || null : null,
-    fornecedorDocumento: input.semCompra ? input.fornecedorDocumento?.trim() || null : null,
+    cotacaoUrl: despesaPessoal ? null : input.cotacaoUrl?.trim() || null,
+    semCompra,
+    notaFiscalUrls: semCompra ? (input.notaFiscalUrls ?? []) : [],
+    metodoPagamento: !despesaPessoal && semCompra ? input.metodoPagamento ?? null : null,
+    dadosPagamento: semCompra ? input.dadosPagamento?.trim() || null : null,
+    fornecedorDocumento: !despesaPessoal && semCompra ? input.fornecedorDocumento?.trim() || null : null,
+    categoriaDespesaPessoalId: despesaPessoal ? input.categoriaDespesaPessoalId?.trim() || null : null,
+    numeroPedido: despesaPessoal ? input.numeroPedido?.trim() || null : null,
+    dataVencimento: despesaPessoal && input.dataVencimento ? new Date(input.dataVencimento) : null,
   };
 }
 
+async function obterTipoCompraOuLancar(tipoCompraId: string): Promise<{ despesaPessoal: boolean }> {
+  const tipoCompra = await getDb().tipoCompra.findUnique({ where: { id: tipoCompraId } });
+  if (!tipoCompra) {
+    throw new Error("Tipo de compra inválido.");
+  }
+  return tipoCompra;
+}
+
 export async function criarSolicitacao(input: CriarSolicitacaoInput) {
-  validarCriarSolicitacao(input);
+  const tipoCompra = await obterTipoCompraOuLancar(input.tipoCompraId);
+  validarCriarSolicitacao(input, tipoCompra);
 
   const solicitacao = await getDb().solicitacao.create({
     data: {
       solicitanteId: input.solicitanteId,
       status: StatusSolicitacao.RASCUNHO,
-      ...mapCamposSolicitacao(input),
+      ...mapCamposSolicitacao(input, tipoCompra.despesaPessoal),
     },
   });
 
@@ -194,7 +255,8 @@ export async function editarSolicitacao(
   atorId: string,
   input: CriarSolicitacaoInput
 ) {
-  validarCriarSolicitacao(input);
+  const tipoCompra = await obterTipoCompraOuLancar(input.tipoCompraId);
+  validarCriarSolicitacao(input, tipoCompra);
 
   const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
   if (!solicitacao) {
@@ -217,7 +279,7 @@ export async function editarSolicitacao(
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.REJEITADO,
-    mapCamposSolicitacao(input),
+    mapCamposSolicitacao(input, tipoCompra.despesaPessoal),
     "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
@@ -286,7 +348,20 @@ async function resolverEstadoInicial(solicitacao: {
   solicitanteId: string;
   valor: Prisma.Decimal;
   departamento: { responsavelId: string; diretorId: string };
+  tipoCompra: { despesaPessoal: boolean };
 }): Promise<ResultadoResolucao> {
+  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca passa por
+  // aprovação, nem de nível 1 nem de nível 2 — independente de quem é o
+  // solicitante ou de qual faixa de alçada o valor cairia. Por isso nem
+  // chega a checar pulaNivel1/alçada abaixo.
+  if (solicitacao.tipoCompra.despesaPessoal) {
+    return {
+      status: StatusSolicitacao.APROVADO,
+      evento: "aprovado",
+      detalhe: "Aprovação dispensada — despesa de pessoal (tipo de compra configurado assim).",
+    };
+  }
+
   const pulaNivel1 = solicitacao.solicitanteId === solicitacao.departamento.responsavelId;
   if (!pulaNivel1) {
     // A decisão de nível 2 só é tomada quando o nível 1 aprova, mas o valor
@@ -907,9 +982,14 @@ export type EnviarParaPagamentoInput = {
   // na hora de renderizar. Mais de um porque às vezes há nota fiscal e
   // boleto para enviar juntos, por exemplo.
   notaFiscalUrls: string[];
-  metodoPagamento: MetodoPagamento;
-  dadosPagamento: string;
-  fornecedorDocumento: string;
+  // Ausentes/opcionais só no reenvio de uma despesa de pessoal (ver
+  // TipoCompra.despesaPessoal) — esse tipo nunca coletou método de
+  // pagamento nem CNPJ/CPF do fornecedor, então exigi-los de novo aqui,
+  // só porque o pagamento foi recusado, seria inconsistente com a
+  // criação. Ver processarEnvioPagamento.
+  metodoPagamento?: MetodoPagamento | null;
+  dadosPagamento?: string | null;
+  fornecedorDocumento?: string | null;
 };
 
 // Compartilhado por enviarParaPagamento (COMPRA_CONFIRMADA → ...) e
@@ -939,28 +1019,36 @@ async function processarEnvioPagamento(
   mensagemStatusInvalido: string
 ) {
   const notaFiscalUrls = input.notaFiscalUrls.map((url) => url.trim()).filter(Boolean);
-  const dadosPagamentoTrim = input.dadosPagamento.trim();
-  const fornecedorDocumentoTrim = input.fornecedorDocumento.trim();
+  const dadosPagamentoTrim = input.dadosPagamento?.trim() ?? "";
+  const fornecedorDocumentoTrim = input.fornecedorDocumento?.trim() ?? "";
   if (notaFiscalUrls.length === 0) {
     throw new Error("A nota fiscal/comprovante da compra é obrigatória.");
-  }
-  if (!Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
-    throw new Error("O método de pagamento é obrigatório.");
-  }
-  if (!dadosPagamentoTrim) {
-    throw new Error("Os dados de pagamento são obrigatórios.");
-  }
-  if (!fornecedorDocumentoTrim) {
-    throw new Error("O CNPJ/CPF do fornecedor é obrigatório.");
   }
 
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { solicitante: true },
+    include: { solicitante: true, tipoCompra: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
+
+  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca coletou método
+  // de pagamento nem CNPJ/CPF do fornecedor na criação — só chega aqui pelo
+  // reenvio após uma recusa de pagamento, então exigi-los agora seria
+  // inconsistente com o que a criação pediu.
+  if (!solicitacao.tipoCompra.despesaPessoal) {
+    if (!input.metodoPagamento || !Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
+      throw new Error("O método de pagamento é obrigatório.");
+    }
+    if (!dadosPagamentoTrim) {
+      throw new Error("Os dados de pagamento são obrigatórios.");
+    }
+    if (!fornecedorDocumentoTrim) {
+      throw new Error("O CNPJ/CPF do fornecedor é obrigatório.");
+    }
+  }
+
   // Numa solicitação sem compra não existe comprador designado — quem pode
   // corrigir e reenviar depois de uma recusa de pagamento é o próprio
   // solicitante, já que foi ele quem anexou a documentação na criação.
@@ -984,9 +1072,9 @@ async function processarEnvioPagamento(
     {
       status: StatusSolicitacao.AGUARDANDO_PAGAMENTO,
       notaFiscalUrls,
-      metodoPagamento: input.metodoPagamento,
-      dadosPagamento: dadosPagamentoTrim,
-      fornecedorDocumento: fornecedorDocumentoTrim,
+      metodoPagamento: solicitacao.tipoCompra.despesaPessoal ? null : input.metodoPagamento,
+      dadosPagamento: dadosPagamentoTrim || null,
+      fornecedorDocumento: solicitacao.tipoCompra.despesaPessoal ? null : fornecedorDocumentoTrim,
       // Só faz diferença vindo de PAGAMENTO_RECUSADO (de COMPRA_CONFIRMADA já
       // é null) — limpa o motivo antigo atomicamente junto com a transição,
       // mesmo padrão de processarEnvio limpando motivoRejeicao no reenvio.

@@ -65,6 +65,25 @@ describe("tipos de compra", () => {
     expect(atualizado.compradorEhSolicitante).toBe(false);
   });
 
+  it("cria com despesaPessoal false por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão dp" });
+    expect(tipo.despesaPessoal).toBe(false);
+  });
+
+  it("cria e atualiza despesaPessoal", async () => {
+    const tipo = await criarTipoCompra({
+      nome: "Despesa de Pessoal teste",
+      despesaPessoal: true,
+    });
+    expect(tipo.despesaPessoal).toBe(true);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, {
+      nome: tipo.nome,
+      despesaPessoal: false,
+    });
+    expect(atualizado.despesaPessoal).toBe(false);
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

@@ -38,6 +38,9 @@ export function PainelEdicaoReenvio({
             dadosPagamento: solicitacao.dadosPagamento,
             fornecedorDocumento: solicitacao.fornecedorDocumento,
             temAnexo: solicitacao.notaFiscalUrls.length > 0,
+            categoriaDespesaPessoalId: solicitacao.categoriaDespesaPessoalId,
+            numeroPedido: solicitacao.numeroPedido,
+            dataVencimento: solicitacao.dataVencimento?.toISOString().slice(0, 10) ?? null,
           }}
           {...listas}
         />

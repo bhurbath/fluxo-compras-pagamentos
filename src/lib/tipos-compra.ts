@@ -7,6 +7,9 @@ export type TipoCompraInput = {
   // de comprador pula a matriz e a designação manual, indo direto para o
   // solicitante (ver designarComprador em workflow.ts).
   compradorEhSolicitante?: boolean;
+  // Ver comentário no schema (model TipoCompra) — muda o formulário de
+  // solicitação inteiro e dispensa aprovação/compra (ver workflow.ts).
+  despesaPessoal?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -23,6 +26,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
     data: {
       nome: input.nome.trim(),
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
+      despesaPessoal: input.despesaPessoal ?? false,
     },
   });
 }
@@ -34,6 +38,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
     data: {
       nome: input.nome.trim(),
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
+      despesaPessoal: input.despesaPessoal ?? false,
     },
   });
 }

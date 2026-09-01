@@ -36,6 +36,11 @@ import {
 } from "@/lib/conta-contabil";
 import { atualizarEmpresa, criarEmpresa, excluirEmpresa } from "@/lib/empresa";
 import {
+  atualizarCategoriaDespesaPessoal,
+  criarCategoriaDespesaPessoal,
+  excluirCategoriaDespesaPessoal,
+} from "@/lib/categoria-despesa-pessoal";
+import {
   atualizarEntradaMatriz,
   criarEntradaMatriz,
   excluirEntradaMatriz,
@@ -260,6 +265,7 @@ function parseTipoCompraForm(formData: FormData): TipoCompraInput {
   return {
     nome: campos.nome,
     compradorEhSolicitante: formData.get("compradorEhSolicitante") === "on",
+    despesaPessoal: formData.get("despesaPessoal") === "on",
   };
 }
 
@@ -348,4 +354,16 @@ export const {
   excluir: excluirEmpresa,
   basePath: "/admin/empresas",
   mensagemNomeObrigatorio: "O nome da empresa é obrigatório.",
+});
+
+export const {
+  criarAction: criarCategoriaDespesaPessoalAction,
+  atualizarAction: atualizarCategoriaDespesaPessoalAction,
+  excluirAction: excluirCategoriaDespesaPessoalAction,
+} = criarAcoesNomeSimples({
+  criar: criarCategoriaDespesaPessoal,
+  atualizar: atualizarCategoriaDespesaPessoal,
+  excluir: excluirCategoriaDespesaPessoal,
+  basePath: "/admin/categorias-despesa-pessoal",
+  mensagemNomeObrigatorio: "O nome da categoria é obrigatório.",
 });

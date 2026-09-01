@@ -4,10 +4,16 @@ export function PainelEnviarPagamento({
   solicitacaoId,
   action,
   titulo = "Anexar nota fiscal e enviar para pagamento",
+  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca coletou método
+  // de pagamento nem CNPJ/CPF do fornecedor na criação — pedir isso de novo
+  // aqui, só porque o pagamento foi recusado, seria inconsistente com o que
+  // a criação já pediu (ver processarEnvioPagamento em src/lib/workflow.ts).
+  despesaPessoal = false,
 }: {
   solicitacaoId: string;
   action: (id: string, formData: FormData) => Promise<void>;
   titulo?: string;
+  despesaPessoal?: boolean;
 }) {
   return (
     <div className="card-block">
@@ -32,36 +38,40 @@ export function PainelEnviarPagamento({
             className="input-field"
           />
         </label>
+        {!despesaPessoal && (
+          <>
+            <label className="field">
+              CNPJ/CPF do fornecedor
+              <input
+                type="text"
+                name="fornecedorDocumento"
+                required
+                className="input-field"
+              />
+            </label>
+            <label className="field">
+              Método de pagamento
+              <select
+                name="metodoPagamento"
+                defaultValue=""
+                required
+                className="input-field"
+              >
+                <option value="">Selecione</option>
+                {Object.entries(METODO_PAGAMENTO_LEGIVEL).map(([valor, legivel]) => (
+                  <option key={valor} value={valor}>
+                    {legivel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <label className="field">
-          CNPJ/CPF do fornecedor
-          <input
-            type="text"
-            name="fornecedorDocumento"
-            required
-            className="input-field"
-          />
-        </label>
-        <label className="field">
-          Método de pagamento
-          <select
-            name="metodoPagamento"
-            defaultValue=""
-            required
-            className="input-field"
-          >
-            <option value="">Selecione</option>
-            {Object.entries(METODO_PAGAMENTO_LEGIVEL).map(([valor, legivel]) => (
-              <option key={valor} value={valor}>
-                {legivel}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          Dados de pagamento (chave PIX, dados bancários, etc.)
+          Dados de pagamento (chave PIX, dados bancários, etc.){despesaPessoal && " (opcional)"}
           <textarea
             name="dadosPagamento"
-            required
+            required={!despesaPessoal}
             className="input-field"
           />
         </label>

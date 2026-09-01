@@ -355,4 +355,24 @@ a {
     padding-left: 1rem;
     border-left: 2px solid var(--accent-soft);
   }
+
+  /* Alternância "tipo de compra é despesa de pessoal" (ver
+     CamposSolicitacao) — mesmo padrão puro-CSS acima, mas a condição é a
+     option selecionada em Tipo de compra carregar data-despesa-pessoal, não
+     uma checkbox. Troca o conjunto de campos "padrão" pelo reduzido de
+     despesa de pessoal. */
+  .despesa-pessoal-fields {
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked)
+    .despesa-pessoal-fields {
+    display: flex;
+  }
 }

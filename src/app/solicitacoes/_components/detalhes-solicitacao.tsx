@@ -60,29 +60,55 @@ export function DetalhesSolicitacao({
           <dt className="muted">Fornecedor</dt>
           <dd>{solicitacao.fornecedor}</dd>
         </div>
-        <div>
-          <dt className="muted">Forma de pagamento</dt>
-          <dd>
-            {FORMA_PAGAMENTO_LEGIVEL[solicitacao.formaPagamento] ??
-              solicitacao.formaPagamento}
-          </dd>
-        </div>
-        <div>
-          <dt className="muted">Centro de custo</dt>
-          <dd>{solicitacao.centroCusto.nome}</dd>
-        </div>
-        <div>
-          <dt className="muted">Centro de resultado</dt>
-          <dd>{solicitacao.centroResultado.nome}</dd>
-        </div>
-        <div>
-          <dt className="muted">Conta contábil</dt>
-          <dd>{solicitacao.contaContabil.nome}</dd>
-        </div>
+        {solicitacao.formaPagamento && (
+          <div>
+            <dt className="muted">Forma de pagamento</dt>
+            <dd>
+              {FORMA_PAGAMENTO_LEGIVEL[solicitacao.formaPagamento] ??
+                solicitacao.formaPagamento}
+            </dd>
+          </div>
+        )}
+        {solicitacao.centroCusto && (
+          <div>
+            <dt className="muted">Centro de custo</dt>
+            <dd>{solicitacao.centroCusto.nome}</dd>
+          </div>
+        )}
+        {solicitacao.centroResultado && (
+          <div>
+            <dt className="muted">Centro de resultado</dt>
+            <dd>{solicitacao.centroResultado.nome}</dd>
+          </div>
+        )}
+        {solicitacao.contaContabil && (
+          <div>
+            <dt className="muted">Conta contábil</dt>
+            <dd>{solicitacao.contaContabil.nome}</dd>
+          </div>
+        )}
         <div>
           <dt className="muted">Empresa</dt>
           <dd>{solicitacao.empresa.nome}</dd>
         </div>
+        {solicitacao.categoriaDespesaPessoal && (
+          <div>
+            <dt className="muted">Categoria da despesa</dt>
+            <dd>{solicitacao.categoriaDespesaPessoal.nome}</dd>
+          </div>
+        )}
+        {solicitacao.numeroPedido && (
+          <div>
+            <dt className="muted">Nº do pedido</dt>
+            <dd>{solicitacao.numeroPedido}</dd>
+          </div>
+        )}
+        {solicitacao.dataVencimento && (
+          <div>
+            <dt className="muted">Data de vencimento</dt>
+            <dd>{solicitacao.dataVencimento.toLocaleDateString("pt-BR")}</dd>
+          </div>
+        )}
         {solicitacao.linkCompra && (
           <div>
             <dt className="muted">Link da compra</dt>

@@ -3,7 +3,11 @@ export function TipoCompraForm({
   action,
   submitLabel,
 }: {
-  defaultValues?: { nome: string; compradorEhSolicitante: boolean };
+  defaultValues?: {
+    nome: string;
+    compradorEhSolicitante: boolean;
+    despesaPessoal: boolean;
+  };
   action: (formData: FormData) => Promise<void>;
   submitLabel: string;
 }) {
@@ -26,6 +30,15 @@ export function TipoCompraForm({
         />
         O comprador é o próprio solicitante (pula a matriz de comprador e a designação
         manual — quem pediu é quem executa a contratação)
+      </label>
+      <label className="field-inline">
+        <input
+          name="despesaPessoal"
+          type="checkbox"
+          defaultChecked={defaultValues?.despesaPessoal}
+        />
+        É despesa de pessoal (salários, encargos, benefícios, taxas — formulário reduzido,
+        sem aprovação nem etapa de compra, direto para pagamento)
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

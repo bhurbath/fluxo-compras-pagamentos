@@ -30,6 +30,7 @@ export default async function AdminLayout({
         <Link href="/admin/centros-resultado">Centros de resultado</Link>
         <Link href="/admin/contas-contabeis">Contas contábeis</Link>
         <Link href="/admin/empresas">Empresas</Link>
+        <Link href="/admin/categorias-despesa-pessoal">Categorias de despesa de pessoal</Link>
         <Link href="/" className="link" style={{ marginLeft: "auto" }}>
           Voltar ao app
         </Link>

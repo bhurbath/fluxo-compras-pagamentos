@@ -38,6 +38,7 @@ export default async function TiposCompraPage({
               <tr>
                 <th>Nome</th>
                 <th>Comprador é o solicitante</th>
+                <th>Despesa de pessoal</th>
                 <th></th>
               </tr>
             </thead>
@@ -46,6 +47,7 @@ export default async function TiposCompraPage({
                 <tr key={tipo.id}>
                   <td>{tipo.nome}</td>
                   <td>{tipo.compradorEhSolicitante ? "Sim" : "Não"}</td>
+                  <td>{tipo.despesaPessoal ? "Sim" : "Não"}</td>
                   <td className="flex gap-4 justify-end">
                     <Link href={`/admin/tipos-compra/${tipo.id}`} className="link">
                       Editar
