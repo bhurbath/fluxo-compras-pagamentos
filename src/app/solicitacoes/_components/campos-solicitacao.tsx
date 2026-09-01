@@ -211,6 +211,7 @@ export function CamposSolicitacao({
             name="linkCompra"
             type="text"
             defaultValue={defaultValues?.linkCompra ?? ""}
+            autoComplete="off"
             className="input-field"
           />
         </label>
