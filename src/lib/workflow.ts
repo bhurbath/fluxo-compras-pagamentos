@@ -201,7 +201,11 @@ function linkAcessoHtml(solicitacaoId: string): string {
 async function atualizarStatusComGuarda(
   id: string,
   statusEsperado: StatusSolicitacao,
-  data: Prisma.SolicitacaoUpdateManyMutationInput,
+  // Unchecked, não só UpdateManyMutationInput — esse último omite todo FK
+  // "checked" (compradorId incluso), já que normalmente esses só seriam
+  // graváveis através do objeto de relação. Uma das chamadas (rejeitar)
+  // precisa zerar compradorId diretamente.
+  data: Prisma.SolicitacaoUncheckedUpdateManyInput,
   mensagemConflito: string
 ): Promise<void> {
   const { count } = await getDb().solicitacao.updateMany({
@@ -936,7 +940,7 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
 
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { departamento: true, solicitante: true },
+    include: { departamento: true, solicitante: true, tipoCompra: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -944,9 +948,19 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
 
   // Rejeitado é alcançável a partir de qualquer nível de aprovação pendente
   // — o aprovador esperado muda conforme em qual nível a solicitação está.
-  const aprovadorPorStatus: Partial<Record<StatusSolicitacao, string>> = {
+  // Também alcançável a partir de APROVADO pelo próprio comprador designado,
+  // só quando o tipo de compra exige previsão de chegada (ex.: Mercado
+  // Livre, cartão de crédito — item indisponível, preço mudou, etc.): não
+  // existia nenhuma forma de o comprador recusar uma compra designada a
+  // ele, então essa reprovação passa pelo mesmo caminho de uma reprovação
+  // de nível 1/2 — a solicitação inteira vai para REJEITADO e o solicitante
+  // precisa corrigir e reenviar.
+  const aprovadorPorStatus: Partial<Record<StatusSolicitacao, string | null>> = {
     [StatusSolicitacao.ENVIADO]: solicitacao.departamento.responsavelId,
     [StatusSolicitacao.AGUARDANDO_NIVEL2]: solicitacao.departamento.diretorId,
+    [StatusSolicitacao.APROVADO]: solicitacao.tipoCompra.exigePrevisaoChegada
+      ? solicitacao.compradorId
+      : null,
   };
   const aprovadorEsperado = aprovadorPorStatus[solicitacao.status];
   if (!aprovadorEsperado) {
@@ -959,7 +973,16 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
   await atualizarStatusComGuarda(
     id,
     solicitacao.status,
-    { status: StatusSolicitacao.REJEITADO, motivoRejeicao: motivoTrim },
+    {
+      status: StatusSolicitacao.REJEITADO,
+      motivoRejeicao: motivoTrim,
+      // Limpa o comprador designado — sem isso, designarComprador (que só
+      // atribui quando compradorId ainda é nulo) ficaria travado em
+      // silêncio na próxima vez que a solicitação chegar de novo em
+      // APROVADO, deixando o mesmo comprador que acabou de recusar como
+      // "designado" sem ninguém ser notificado.
+      compradorId: null,
+    },
     "Essa solicitação já foi decidida por outra ação e não está mais aguardando aprovação."
   );
 

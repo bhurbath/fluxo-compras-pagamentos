@@ -172,6 +172,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             action={confirmarCompraAction}
             exigePrevisaoChegada={solicitacao.tipoCompra.exigePrevisaoChegada}
+            rejeitarAction={rejeitarAction}
           />
         )}
 

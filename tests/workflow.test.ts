@@ -1038,6 +1038,80 @@ describe("workflow: rejeitar", () => {
       expect.objectContaining({ to: solicitante.email })
     );
   });
+
+  // Comprador recusando uma compra em APROVADO — só quando o tipo de
+  // compra exige previsão de chegada (ex.: Mercado Livre, cartão de
+  // crédito). Ver TipoCompra.exigePrevisaoChegada em workflow.ts.
+  it("permite ao comprador designado rejeitar uma compra em APROVADO quando o tipo exige previsão de chegada", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("r8", {
+      exigePrevisaoChegada: true,
+    });
+
+    const rejeitada = await rejeitar(solicitacao.id, comprador.id, "Item indisponível");
+
+    expect(rejeitada.status).toBe("REJEITADO");
+    expect(rejeitada.motivoRejeicao).toBe("Item indisponível");
+  });
+
+  it("limpa o comprador designado ao rejeitar", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("r9", {
+      exigePrevisaoChegada: true,
+    });
+
+    const rejeitada = await rejeitar(solicitacao.id, comprador.id, "Item indisponível");
+
+    expect(rejeitada.compradorId).toBeNull();
+  });
+
+  it("lança erro se o comprador tenta rejeitar uma compra de um tipo que não exige previsão de chegada", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("r10");
+
+    await expect(
+      rejeitar(solicitacao.id, comprador.id, "Item indisponível")
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem tenta rejeitar não é o comprador designado, mesmo com previsão de chegada", async () => {
+    const { solicitacao } = await criarSolicitacaoComCompradorDesignado("r11", {
+      exigePrevisaoChegada: true,
+    });
+    const intruso = await criarUsuario("intruso-r11");
+
+    await expect(
+      rejeitar(solicitacao.id, intruso.id, "Item indisponível")
+    ).rejects.toThrow();
+  });
+
+  it("permite reenviar e designar um comprador de novo depois de o comprador rejeitar", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, comprador, solicitante } = await criarSolicitacaoComCompradorDesignado(
+      "r12",
+      { exigePrevisaoChegada: true }
+    );
+    const departamento = await testDb.departamento.findUniqueOrThrow({
+      where: { id: solicitacao.departamentoId },
+    });
+    const rejeitada = await rejeitar(solicitacao.id, comprador.id, "Item indisponível");
+    expect(rejeitada.compradorId).toBeNull();
+
+    const editada = await editarSolicitacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(rejeitada)
+    );
+    expect(editada.status).toBe("REJEITADO");
+
+    const reenviada = await reenviarSolicitacao(solicitacao.id);
+    expect(reenviada.status).toBe("ENVIADO");
+
+    // Ainda existe entrada na matriz de comprador — designarComprador
+    // reatribui o mesmo comprador automaticamente, em vez de ficar travado
+    // porque compradorId já estava preenchido (ver rejeitar em
+    // workflow.ts).
+    const aprovada = await aprovarNivel1(reenviada.id, departamento.responsavelId);
+    expect(aprovada.status).toBe("APROVADO");
+    expect(aprovada.compradorId).toBe(comprador.id);
+  });
 });
 
 describe("workflow: listarPendentesNivel1", () => {
