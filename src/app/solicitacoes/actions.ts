@@ -132,9 +132,14 @@ async function parseSolicitacaoForm(
     );
   }
 
-  const campos = lerCampos(formData, ["descricao", "valor", "tipoCompraId", "fornecedor", "empresaId"]);
-  exigirTodos(campos, "Descrição, valor, tipo de compra, fornecedor e empresa são obrigatórios.");
+  const campos = lerCampos(formData, ["descricao", "valor", "tipoCompraId"]);
+  exigirTodos(campos, "Descrição, valor e tipo de compra são obrigatórios.");
 
+  // Fornecedor e empresa não são exigidos aqui: dependem do tipo de compra
+  // (TipoCompra.dispensaFornecedorForma/empresaFixaId — ex.: Mercado
+  // Livre), que só o workflow sabe decidir (ver validarCriarSolicitacao em
+  // src/lib/workflow.ts).
+  const opcionaisTopo = lerCampos(formData, ["fornecedor", "empresaId"]);
   const opcionais = lerCampos(formData, ["linkCompra", "informacoesComplementares"]);
   const cotacaoUrl = await lerCotacaoUrl(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual);
 
@@ -144,8 +149,8 @@ async function parseSolicitacaoForm(
     valor: campos.valor,
     departamentoId: usuario.departamentoId,
     tipoCompraId: campos.tipoCompraId,
-    fornecedor: campos.fornecedor,
-    empresaId: campos.empresaId,
+    fornecedor: opcionaisTopo.fornecedor || null,
+    empresaId: opcionaisTopo.empresaId || null,
     informacoesComplementares: opcionais.informacoesComplementares || null,
   };
 
@@ -164,14 +169,14 @@ async function parseSolicitacaoForm(
     "contaContabilId",
   ]);
   exigirTodos(
-    padrao,
-    "Forma de pagamento, centro de custo, centro de resultado e conta contábil são obrigatórios."
+    { centroCustoId: padrao.centroCustoId, centroResultadoId: padrao.centroResultadoId, contaContabilId: padrao.contaContabilId },
+    "Centro de custo, centro de resultado e conta contábil são obrigatórios."
   );
   const semCompra = formData.get("semCompra") === "on";
 
   return {
     ...base,
-    formaPagamento: padrao.formaPagamento as FormaPagamento,
+    formaPagamento: (padrao.formaPagamento || null) as FormaPagamento | null,
     centroCustoId: padrao.centroCustoId,
     centroResultadoId: padrao.centroResultadoId,
     contaContabilId: padrao.contaContabilId,

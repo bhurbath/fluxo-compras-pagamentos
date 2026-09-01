@@ -40,6 +40,8 @@ export default async function TiposCompraPage({
                 <th>Comprador é o solicitante</th>
                 <th>Despesa de pessoal</th>
                 <th>Exige previsão de chegada</th>
+                <th>Dispensa fornecedor/forma</th>
+                <th>Empresa fixa</th>
                 <th></th>
               </tr>
             </thead>
@@ -50,6 +52,8 @@ export default async function TiposCompraPage({
                   <td>{tipo.compradorEhSolicitante ? "Sim" : "Não"}</td>
                   <td>{tipo.despesaPessoal ? "Sim" : "Não"}</td>
                   <td>{tipo.exigePrevisaoChegada ? "Sim" : "Não"}</td>
+                  <td>{tipo.dispensaFornecedorForma ? "Sim" : "Não"}</td>
+                  <td>{tipo.empresaFixa?.nome ?? "—"}</td>
                   <td className="flex gap-4 justify-end">
                     <Link href={`/admin/tipos-compra/${tipo.id}`} className="link">
                       Editar

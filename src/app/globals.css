@@ -388,4 +388,20 @@ a {
     .despesa-pessoal-fields {
     display: flex;
   }
+
+  /* Mesmo padrão, pra tipo de compra com TipoCompra.dispensaFornecedorForma
+     (ex.: Mercado Livre — o link da compra já traz fornecedor e forma de
+     pagamento) e/ou TipoCompra.empresaFixaId (empresa sempre a mesma,
+     escolhida no cadastro do tipo, não pelo solicitante). Independentes
+     entre si: um tipo pode ter só um dos dois. */
+  form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
+    .campo-fornecedor,
+  form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
+    .campo-forma-pagamento {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-empresa-fixa]:checked) .campo-empresa {
+    display: none;
+  }
 }

@@ -56,10 +56,12 @@ export function DetalhesSolicitacao({
           <dt className="muted">Tipo de compra</dt>
           <dd>{solicitacao.tipoCompra.nome}</dd>
         </div>
-        <div>
-          <dt className="muted">Fornecedor</dt>
-          <dd>{solicitacao.fornecedor}</dd>
-        </div>
+        {solicitacao.fornecedor && (
+          <div>
+            <dt className="muted">Fornecedor</dt>
+            <dd>{solicitacao.fornecedor}</dd>
+          </div>
+        )}
         {solicitacao.formaPagamento && (
           <div>
             <dt className="muted">Forma de pagamento</dt>

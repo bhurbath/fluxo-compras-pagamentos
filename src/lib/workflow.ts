@@ -31,15 +31,24 @@ export type CriarSolicitacaoInput = {
   tipoCompraId: string;
   descricao: string;
   valor: string;
-  fornecedor: string;
+  // Ausente/ignorado para uma despesa de pessoal sem fornecedor definido ou
+  // para um tipo de compra com TipoCompra.dispensaFornecedorForma (ex.:
+  // Mercado Livre — o link da compra já traz o fornecedor). Obrigatório em
+  // qualquer outro caso, checado em validarCriarSolicitacao.
+  fornecedor?: string | null;
   // Ausentes/ignorados para uma despesa de pessoal (ver
   // TipoCompra.despesaPessoal) — obrigatórios em qualquer outro tipo de
-  // compra, checado em validarCriarSolicitacao.
+  // compra, checado em validarCriarSolicitacao. formaPagamento também é
+  // dispensado por TipoCompra.dispensaFornecedorForma.
   formaPagamento?: FormaPagamento | null;
   centroCustoId?: string | null;
   centroResultadoId?: string | null;
   contaContabilId?: string | null;
-  empresaId: string;
+  // Ausente/ignorado quando TipoCompra.empresaFixaId está definido — nesse
+  // caso a empresa da solicitação é sempre a fixada, não uma escolha do
+  // solicitante (ver mapCamposSolicitacao). Obrigatório em qualquer outro
+  // caso.
+  empresaId?: string | null;
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
   // Cotação/orçamento opcional, para apoiar a decisão do aprovador — ver
@@ -69,8 +78,6 @@ const CAMPOS_OBRIGATORIOS: {
   { chave: "solicitanteId", mensagem: "O solicitante é obrigatório." },
   { chave: "departamentoId", mensagem: "O departamento é obrigatório." },
   { chave: "tipoCompraId", mensagem: "O tipo de compra é obrigatório." },
-  { chave: "fornecedor", mensagem: "O fornecedor é obrigatório." },
-  { chave: "empresaId", mensagem: "A empresa é obrigatória." },
 ];
 
 // Só exigidos fora de uma despesa de pessoal (ver TipoCompra.despesaPessoal
@@ -86,7 +93,11 @@ const CAMPOS_OBRIGATORIOS_PADRAO: {
 
 function validarCriarSolicitacao(
   input: CriarSolicitacaoInput,
-  tipoCompra: { despesaPessoal: boolean }
+  tipoCompra: {
+    despesaPessoal: boolean;
+    dispensaFornecedorForma: boolean;
+    empresaFixaId: string | null;
+  }
 ): void {
   if (!input.descricao.trim()) {
     throw new Error("A descrição é obrigatória.");
@@ -99,6 +110,16 @@ function validarCriarSolicitacao(
     if (!String(input[chave] ?? "").trim()) {
       throw new Error(mensagem);
     }
+  }
+
+  // Fornecedor e empresa são dispensados independentemente do tipo de
+  // solicitação (padrão, sem compra ou despesa de pessoal) — dependem só
+  // dessas duas flags do tipo de compra, checadas primeiro.
+  if (!tipoCompra.dispensaFornecedorForma && !input.fornecedor?.trim()) {
+    throw new Error("O fornecedor é obrigatório.");
+  }
+  if (!tipoCompra.empresaFixaId && !input.empresaId?.trim()) {
+    throw new Error("A empresa é obrigatória.");
   }
 
   // Despesa de pessoal tem seu próprio conjunto de campos obrigatórios,
@@ -122,7 +143,10 @@ function validarCriarSolicitacao(
       throw new Error(mensagem);
     }
   }
-  if (!input.formaPagamento || !Object.values(FormaPagamento).includes(input.formaPagamento)) {
+  if (
+    !tipoCompra.dispensaFornecedorForma &&
+    (!input.formaPagamento || !Object.values(FormaPagamento).includes(input.formaPagamento))
+  ) {
     throw new Error("A forma de pagamento é obrigatória.");
   }
   if (input.semCompra) {
@@ -189,6 +213,12 @@ async function atualizarStatusComGuarda(
   }
 }
 
+type TipoCompraFlags = {
+  despesaPessoal: boolean;
+  dispensaFornecedorForma: boolean;
+  empresaFixaId: string | null;
+};
+
 // The fields both criarSolicitacao and editarSolicitacao write — everything
 // about "the request" except who made it and what status it's in, which
 // each of those two functions owns differently (create sets both fresh;
@@ -197,20 +227,31 @@ async function atualizarStatusComGuarda(
 // factualmente correto (não existe etapa de compra) e é o que faz todo o
 // resto do workflow (designarComprador, recusarPagamento, ...) já tratar
 // essa solicitação do jeito certo sem precisar de mais nenhuma checagem
-// espalhada por aí.
-function mapCamposSolicitacao(input: CriarSolicitacaoInput, despesaPessoal: boolean) {
+// espalhada por aí. empresaId nunca confia no que veio do formulário quando
+// há empresaFixaId — o servidor decide, não o cliente (o campo nem aparece
+// no formulário nesse caso, mas mesmo que viesse algo seria ignorado).
+function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoCompraFlags) {
+  const { despesaPessoal, dispensaFornecedorForma, empresaFixaId } = tipoCompra;
   const semCompra = despesaPessoal || (input.semCompra ?? false);
+  const empresaId = empresaFixaId ?? input.empresaId;
+  if (!empresaId) {
+    // Não deveria acontecer — validarCriarSolicitacao já garante um dos
+    // dois antes de mapCamposSolicitacao ser chamada — mas mantém o retorno
+    // desta função honesto (empresaId nunca opcional na tabela) em vez de
+    // um non-null assertion.
+    throw new Error("A empresa é obrigatória.");
+  }
   return {
     departamentoId: input.departamentoId,
     tipoCompraId: input.tipoCompraId,
     descricao: input.descricao.trim(),
     valor: input.valor,
-    fornecedor: input.fornecedor.trim(),
-    formaPagamento: despesaPessoal ? null : input.formaPagamento,
+    fornecedor: dispensaFornecedorForma ? null : input.fornecedor?.trim() || null,
+    formaPagamento: despesaPessoal || dispensaFornecedorForma ? null : input.formaPagamento,
     centroCustoId: despesaPessoal ? null : input.centroCustoId,
     centroResultadoId: despesaPessoal ? null : input.centroResultadoId,
     contaContabilId: despesaPessoal ? null : input.contaContabilId,
-    empresaId: input.empresaId,
+    empresaId,
     linkCompra: despesaPessoal ? null : input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
     cotacaoUrl: despesaPessoal ? null : input.cotacaoUrl?.trim() || null,
@@ -225,7 +266,7 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, despesaPessoal: bool
   };
 }
 
-async function obterTipoCompraOuLancar(tipoCompraId: string): Promise<{ despesaPessoal: boolean }> {
+async function obterTipoCompraOuLancar(tipoCompraId: string): Promise<TipoCompraFlags> {
   const tipoCompra = await getDb().tipoCompra.findUnique({ where: { id: tipoCompraId } });
   if (!tipoCompra) {
     throw new Error("Tipo de compra inválido.");
@@ -241,7 +282,7 @@ export async function criarSolicitacao(input: CriarSolicitacaoInput) {
     data: {
       solicitanteId: input.solicitanteId,
       status: StatusSolicitacao.RASCUNHO,
-      ...mapCamposSolicitacao(input, tipoCompra.despesaPessoal),
+      ...mapCamposSolicitacao(input, tipoCompra),
     },
   });
 
@@ -279,7 +320,7 @@ export async function editarSolicitacao(
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.REJEITADO,
-    mapCamposSolicitacao(input, tipoCompra.despesaPessoal),
+    mapCamposSolicitacao(input, tipoCompra),
     "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 

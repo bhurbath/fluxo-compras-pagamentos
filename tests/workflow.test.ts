@@ -398,6 +398,127 @@ describe("workflow: criarSolicitacao", () => {
 
     expect(solicitacao.cotacaoUrl).toBeNull();
   });
+
+  it("não exige fornecedor nem forma de pagamento quando o tipo de compra dispensa (ex.: Mercado Livre)", async () => {
+    const solicitante = await criarUsuario("sol-dff");
+    const departamento = await criarDepartamento("mkt-dff");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Mercado Livre dff", dispensaFornecedorForma: true },
+    });
+    const campos = await criarCamposObrigatorios("dff");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra via link",
+      valor: "500",
+      // fornecedor e formaPagamento propositalmente omitidos.
+      centroCustoId: campos.centroCustoId,
+      centroResultadoId: campos.centroResultadoId,
+      contaContabilId: campos.contaContabilId,
+      empresaId: campos.empresaId,
+    });
+
+    expect(solicitacao.fornecedor).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+  });
+
+  it("continua exigindo valor mesmo quando o tipo de compra dispensa fornecedor/forma", async () => {
+    const solicitante = await criarUsuario("sol-dff2");
+    const departamento = await criarDepartamento("mkt-dff2");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Mercado Livre dff2", dispensaFornecedorForma: true },
+    });
+    const campos = await criarCamposObrigatorios("dff2");
+
+    await expect(
+      criarSolicitacao({
+        solicitanteId: solicitante.id,
+        departamentoId: departamento.id,
+        tipoCompraId: tipo.id,
+        descricao: "Compra via link",
+        valor: "0",
+        centroCustoId: campos.centroCustoId,
+        centroResultadoId: campos.centroResultadoId,
+        contaContabilId: campos.contaContabilId,
+        empresaId: campos.empresaId,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("continua exigindo centro de custo/resultado/conta contábil mesmo quando o tipo de compra dispensa fornecedor/forma", async () => {
+    const solicitante = await criarUsuario("sol-dff3");
+    const departamento = await criarDepartamento("mkt-dff3");
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Mercado Livre dff3", dispensaFornecedorForma: true },
+    });
+    const campos = await criarCamposObrigatorios("dff3");
+
+    await expect(
+      criarSolicitacao({
+        solicitanteId: solicitante.id,
+        departamentoId: departamento.id,
+        tipoCompraId: tipo.id,
+        descricao: "Compra via link",
+        valor: "500",
+        empresaId: campos.empresaId,
+      })
+    ).rejects.toThrow(/centro de custo/);
+  });
+
+  it("usa a empresa fixa do tipo de compra, ignorando o que vier no formulário", async () => {
+    const solicitante = await criarUsuario("sol-ef1");
+    const departamento = await criarDepartamento("mkt-ef1");
+    const empresaFixa = await testDb.empresa.create({ data: { nome: "SMELL ef1" } });
+    const outraEmpresa = await testDb.empresa.create({ data: { nome: "Outra ef1" } });
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Mercado Livre ef1", empresaFixaId: empresaFixa.id },
+    });
+    const campos = await criarCamposObrigatorios("ef1");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra via link",
+      valor: "500",
+      fornecedor: campos.fornecedor,
+      formaPagamento: campos.formaPagamento,
+      centroCustoId: campos.centroCustoId,
+      centroResultadoId: campos.centroResultadoId,
+      contaContabilId: campos.contaContabilId,
+      empresaId: outraEmpresa.id,
+    });
+
+    expect(solicitacao.empresaId).toBe(empresaFixa.id);
+  });
+
+  it("não exige empresa quando o tipo de compra tem empresa fixa", async () => {
+    const solicitante = await criarUsuario("sol-ef2");
+    const departamento = await criarDepartamento("mkt-ef2");
+    const empresaFixa = await testDb.empresa.create({ data: { nome: "SMELL ef2" } });
+    const tipo = await testDb.tipoCompra.create({
+      data: { nome: "Mercado Livre ef2", empresaFixaId: empresaFixa.id },
+    });
+    const campos = await criarCamposObrigatorios("ef2");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra via link",
+      valor: "500",
+      fornecedor: campos.fornecedor,
+      formaPagamento: campos.formaPagamento,
+      centroCustoId: campos.centroCustoId,
+      centroResultadoId: campos.centroResultadoId,
+      contaContabilId: campos.contaContabilId,
+      // empresaId propositalmente omitido.
+    });
+
+    expect(solicitacao.empresaId).toBe(empresaFixa.id);
+  });
 });
 
 describe("workflow: enviarSolicitacao", () => {

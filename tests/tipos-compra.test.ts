@@ -103,6 +103,32 @@ describe("tipos de compra", () => {
     expect(atualizado.exigePrevisaoChegada).toBe(false);
   });
 
+  it("cria com dispensaFornecedorForma false e sem empresa fixa por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão dff" });
+    expect(tipo.dispensaFornecedorForma).toBe(false);
+    expect(tipo.empresaFixaId).toBeNull();
+  });
+
+  it("cria e atualiza dispensaFornecedorForma e empresaFixaId", async () => {
+    const empresa = await testDb.empresa.create({ data: { nome: "SMELL teste" } });
+
+    const tipo = await criarTipoCompra({
+      nome: "Mercado Livre dff",
+      dispensaFornecedorForma: true,
+      empresaFixaId: empresa.id,
+    });
+    expect(tipo.dispensaFornecedorForma).toBe(true);
+    expect(tipo.empresaFixaId).toBe(empresa.id);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, {
+      nome: tipo.nome,
+      dispensaFornecedorForma: false,
+      empresaFixaId: null,
+    });
+    expect(atualizado.dispensaFornecedorForma).toBe(false);
+    expect(atualizado.empresaFixaId).toBeNull();
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

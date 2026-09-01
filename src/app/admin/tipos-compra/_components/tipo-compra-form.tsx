@@ -1,5 +1,8 @@
+type Lista = { id: string; nome: string };
+
 export function TipoCompraForm({
   defaultValues,
+  empresas,
   action,
   submitLabel,
 }: {
@@ -8,7 +11,10 @@ export function TipoCompraForm({
     compradorEhSolicitante: boolean;
     despesaPessoal: boolean;
     exigePrevisaoChegada: boolean;
+    dispensaFornecedorForma: boolean;
+    empresaFixaId: string | null;
   };
+  empresas: Lista[];
   action: (formData: FormData) => Promise<void>;
   submitLabel: string;
 }) {
@@ -49,6 +55,34 @@ export function TipoCompraForm({
         />
         Exige previsão de chegada ao confirmar a compra (ex.: Mercado Livre, cartão de
         crédito) — e o envio da nota fiscal depois avisa só o Financeiro, não o solicitante
+      </label>
+      <label className="field-inline">
+        <input
+          name="dispensaFornecedorForma"
+          type="checkbox"
+          defaultChecked={defaultValues?.dispensaFornecedorForma}
+        />
+        Dispensa fornecedor e forma de pagamento (o link da compra já traz essa informação
+        — ex.: Mercado Livre)
+      </label>
+      <label className="field">
+        Empresa fixa (opcional)
+        <select
+          name="empresaFixaId"
+          defaultValue={defaultValues?.empresaFixaId ?? ""}
+          className="input-field"
+        >
+          <option value="">— nenhuma (o solicitante escolhe) —</option>
+          {empresas.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+        <span className="muted-xs">
+          Quando definida, toda solicitação desse tipo usa sempre essa empresa — o campo
+          some do formulário de solicitação.
+        </span>
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

@@ -29,6 +29,7 @@ export async function atualizarEmpresa(id: string, input: EmpresaInput) {
 export async function excluirEmpresa(id: string) {
   await comMensagemDeUsoRestrito(
     () => getDb().empresa.delete({ where: { id } }),
-    "Não é possível excluir: essa empresa está em uso em alguma solicitação."
+    "Não é possível excluir: essa empresa está em uso em alguma solicitação ou é a " +
+      "empresa fixa de algum tipo de compra. Remova ou altere essa configuração primeiro."
   );
 }

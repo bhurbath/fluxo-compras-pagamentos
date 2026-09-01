@@ -15,10 +15,20 @@ export type TipoCompraInput = {
   // ao anexar a nota fiscal (ver confirmarCompra/processarEnvioPagamento em
   // workflow.ts).
   exigePrevisaoChegada?: boolean;
+  // Ver comentário no schema (model TipoCompra) — dispensa fornecedor e
+  // forma de pagamento no formulário de solicitação (ver workflow.ts).
+  dispensaFornecedorForma?: boolean;
+  // Ver comentário no schema (model TipoCompra) — quando definido, toda
+  // solicitação desse tipo usa sempre esta empresa, sem o solicitante
+  // escolher (ver workflow.ts). null/undefined remove a empresa fixa.
+  empresaFixaId?: string | null;
 };
 
 export async function listarTiposCompra() {
-  return getDb().tipoCompra.findMany({ orderBy: { nome: "asc" } });
+  return getDb().tipoCompra.findMany({
+    include: { empresaFixa: true },
+    orderBy: { nome: "asc" },
+  });
 }
 
 export async function obterTipoCompra(id: string) {
@@ -33,6 +43,8 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
       despesaPessoal: input.despesaPessoal ?? false,
       exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
+      dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
+      empresaFixaId: input.empresaFixaId || null,
     },
   });
 }
@@ -46,6 +58,8 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
       despesaPessoal: input.despesaPessoal ?? false,
       exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
+      dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
+      empresaFixaId: input.empresaFixaId || null,
     },
   });
 }

@@ -111,6 +111,20 @@ model TipoCompra {
   // puramente administrativa.
   exigePrevisaoChegada Boolean @default(false)
 
+  // Quando true (tipicamente Mercado Livre): o link da compra já traz
+  // fornecedor e forma de pagamento, então esses dois campos saem do
+  // formulário de solicitação (ver validarCriarSolicitacao/
+  // mapCamposSolicitacao em workflow.ts). Valor continua obrigatório — é
+  // ele que decide a alçada de aprovação, independente do tipo de compra.
+  dispensaFornecedorForma Boolean @default(false)
+
+  // Quando definida, toda solicitação desse tipo usa sempre esta empresa
+  // (ver mapCamposSolicitacao) em vez do solicitante escolher — ex.:
+  // Mercado Livre é sempre comprado pela SMELL. onDelete: Restrict para não
+  // silenciosamente desconfigurar isso se a empresa fixada for excluída.
+  empresaFixaId String?
+  empresaFixa   Empresa? @relation(fields: [empresaFixaId], references: [id], onDelete: Restrict)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.
@@ -182,6 +196,8 @@ model Empresa {
   atualizadoEm DateTime @updatedAt
 
   solicitacoes Solicitacao[]
+  // Inverso de TipoCompra.empresaFixaId.
+  tiposCompraComEmpresaFixa TipoCompra[]
 
   @@map("empresas")
 }
@@ -258,10 +274,12 @@ model Solicitacao {
 
   // Fields matching the company's existing purchase-request template. Todos
   // opcionais no schema (menos empresaId) porque uma solicitação de despesa
-  // de pessoal (ver TipoCompra.despesaPessoal) não os usa — a obrigatoriedade
+  // de pessoal (ver TipoCompra.despesaPessoal) não os usa, e uma de tipo com
+  // TipoCompra.dispensaFornecedorForma não pede fornecedor/forma de
+  // pagamento (o link da compra já traz essa informação) — a obrigatoriedade
   // de cada um por tipo de solicitação é decidida em validarCriarSolicitacao,
   // não aqui.
-  fornecedor                String
+  fornecedor                String?
   formaPagamento            FormaPagamento?
   // onDelete: Restrict em todo FK opcional abaixo — sem isso, Prisma usa
   // SET NULL como padrão implícito pra relação opcional, o que faria

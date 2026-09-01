@@ -2,7 +2,13 @@ import { MetodoPagamento } from "@prisma/client";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 
 type Lista = { id: string; nome: string };
-type TipoCompraLista = { id: string; nome: string; despesaPessoal: boolean };
+type TipoCompraLista = {
+  id: string;
+  nome: string;
+  despesaPessoal: boolean;
+  dispensaFornecedorForma: boolean;
+  empresaFixaId: string | null;
+};
 
 const FORMAS_PAGAMENTO = [
   { value: "ADIANTAMENTO", label: "Adiantamento" },
@@ -35,12 +41,12 @@ export function CamposSolicitacao({
     descricao?: string;
     valor?: string;
     tipoCompraId?: string;
-    fornecedor?: string;
+    fornecedor?: string | null;
     formaPagamento?: string | null;
     centroCustoId?: string | null;
     centroResultadoId?: string | null;
     contaContabilId?: string | null;
-    empresaId?: string;
+    empresaId?: string | null;
     linkCompra?: string | null;
     informacoesComplementares?: string | null;
     temCotacao?: boolean;
@@ -97,28 +103,28 @@ export function CamposSolicitacao({
               key={t.id}
               value={t.id}
               data-despesa-pessoal={t.despesaPessoal ? "true" : undefined}
+              data-dispensa-fornecedor-forma={t.dispensaFornecedorForma ? "true" : undefined}
+              data-empresa-fixa={t.empresaFixaId ? "true" : undefined}
             >
               {t.nome}
             </option>
           ))}
         </select>
       </label>
-      <label className="field">
+      <label className="field campo-fornecedor">
         Fornecedor
         <input
           name="fornecedor"
           type="text"
-          required
-          defaultValue={defaultValues?.fornecedor}
+          defaultValue={defaultValues?.fornecedor ?? ""}
           className="input-field"
         />
       </label>
-      <label className="field">
+      <label className="field campo-empresa">
         Empresa
         <select
           name="empresaId"
           defaultValue={defaultValues?.empresaId ?? ""}
-          required
           className="input-field"
         >
           <option value="">Selecione</option>
@@ -139,7 +145,7 @@ export function CamposSolicitacao({
       </label>
 
       <div className="campos-padrao">
-        <label className="field">
+        <label className="field campo-forma-pagamento">
           Forma de pagamento
           <select
             name="formaPagamento"
