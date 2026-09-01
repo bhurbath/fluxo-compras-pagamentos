@@ -171,6 +171,7 @@ export default async function SolicitacaoDetalhePage({
           <PainelConfirmarCompra
             solicitacaoId={solicitacao.id}
             action={confirmarCompraAction}
+            exigePrevisaoChegada={solicitacao.tipoCompra.exigePrevisaoChegada}
           />
         )}
 

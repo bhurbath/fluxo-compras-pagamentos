@@ -266,6 +266,7 @@ function parseTipoCompraForm(formData: FormData): TipoCompraInput {
     nome: campos.nome,
     compradorEhSolicitante: formData.get("compradorEhSolicitante") === "on",
     despesaPessoal: formData.get("despesaPessoal") === "on",
+    exigePrevisaoChegada: formData.get("exigePrevisaoChegada") === "on",
   };
 }
 

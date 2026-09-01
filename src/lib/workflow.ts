@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { paraDecimal } from "@/lib/decimal";
 import { getEmailSender } from "@/lib/email";
-import { formatarReais } from "@/lib/format";
+import { formatarData, formatarReais } from "@/lib/format";
 import { FormaPagamento, MetodoPagamento, Prisma, StatusSolicitacao } from "@prisma/client";
 
 export async function obterSolicitacao(id: string) {
@@ -938,10 +938,21 @@ export async function rejeitar(id: string, atorId: string, motivo: string) {
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
-export async function confirmarCompra(id: string, atorId: string) {
+export type ConfirmarCompraInput = {
+  // Obrigatória só quando TipoCompra.exigePrevisaoChegada é true (ex.:
+  // Mercado Livre, cartão de crédito) — data estimada de chegada da
+  // mercadoria, string yyyy-mm-dd (o formato de <input type="date">).
+  previsaoChegada?: string | null;
+};
+
+export async function confirmarCompra(
+  id: string,
+  atorId: string,
+  input: ConfirmarCompraInput = {}
+) {
   const solicitacao = await getDb().solicitacao.findUnique({
     where: { id },
-    include: { solicitante: true },
+    include: { solicitante: true, tipoCompra: true },
   });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
@@ -953,10 +964,16 @@ export async function confirmarCompra(id: string, atorId: string) {
     throw new Error("Só é possível confirmar a compra de uma solicitação aprovada.");
   }
 
+  const previsaoChegadaTrim = input.previsaoChegada?.trim() || "";
+  if (solicitacao.tipoCompra.exigePrevisaoChegada && !previsaoChegadaTrim) {
+    throw new Error("A previsão de chegada é obrigatória para esse tipo de compra.");
+  }
+  const previsaoChegada = previsaoChegadaTrim ? new Date(previsaoChegadaTrim) : null;
+
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.APROVADO,
-    { status: StatusSolicitacao.COMPRA_CONFIRMADA },
+    { status: StatusSolicitacao.COMPRA_CONFIRMADA, previsaoChegada },
     "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
@@ -968,7 +985,10 @@ export async function confirmarCompra(id: string, atorId: string) {
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>A compra da sua solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}) foi confirmada. Em breve o pagamento será processado.</p>` +
+      `(${formatarReais(solicitacao.valor)}) foi confirmada.</p>` +
+      (previsaoChegada
+        ? `<p>Previsão de chegada: ${formatarData(previsaoChegada)}.</p>`
+        : "<p>Em breve o pagamento será processado.</p>") +
       linkAcessoHtml(id),
   });
 
@@ -1086,15 +1106,24 @@ async function processarEnvioPagamento(
   await registrarHistorico(id, eventoEnvio, atorId);
 
   await Promise.all([
-    getEmailSender().send({
-      to: solicitacao.solicitante.email,
-      subject: "Solicitação de compra enviada para pagamento",
-      html:
-        `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
-        `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "foi enviada ao Financeiro para pagamento.</p>" +
-        linkAcessoHtml(id),
-    }),
+    // Tipo de compra com exigePrevisaoChegada (ex.: Mercado Livre, cartão de
+    // crédito): o solicitante já foi avisado da compra e da previsão de
+    // chegada em confirmarCompra — o envio da nota fiscal aqui é só
+    // administrativo, entre comprador e Financeiro, então não notifica o
+    // solicitante de novo.
+    ...(solicitacao.tipoCompra.exigePrevisaoChegada
+      ? []
+      : [
+          getEmailSender().send({
+            to: solicitacao.solicitante.email,
+            subject: "Solicitação de compra enviada para pagamento",
+            html:
+              `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+              `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+              "foi enviada ao Financeiro para pagamento.</p>" +
+              linkAcessoHtml(id),
+          }),
+        ]),
     notificarTodosFinanceiros(
       "Solicitação de compra aguardando pagamento",
       "<p>Olá.</p>" +

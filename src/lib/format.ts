@@ -16,6 +16,13 @@ export function formatarDataHora(data: Date): string {
   });
 }
 
+export function formatarData(data: Date): string {
+  return data.toLocaleDateString("pt-BR", {
+    dateStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  });
+}
+
 // yyyy-mm-dd (o formato de <input type="date">) → início ou fim do dia
 // local, validado. Retorna undefined para vazio, null para uma data
 // inválida (ex: query string adulterada) — o chamador decide o que fazer

@@ -34,6 +34,7 @@ export default async function EditarTipoCompraPage({
           nome: tipo.nome,
           compradorEhSolicitante: tipo.compradorEhSolicitante,
           despesaPessoal: tipo.despesaPessoal,
+          exigePrevisaoChegada: tipo.exigePrevisaoChegada,
         }}
         action={atualizarTipoCompraAction.bind(null, id)}
         submitLabel="Salvar"

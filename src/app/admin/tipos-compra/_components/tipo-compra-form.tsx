@@ -7,6 +7,7 @@ export function TipoCompraForm({
     nome: string;
     compradorEhSolicitante: boolean;
     despesaPessoal: boolean;
+    exigePrevisaoChegada: boolean;
   };
   action: (formData: FormData) => Promise<void>;
   submitLabel: string;
@@ -39,6 +40,15 @@ export function TipoCompraForm({
         />
         É despesa de pessoal (salários, encargos, benefícios, taxas — formulário reduzido,
         sem aprovação nem etapa de compra, direto para pagamento)
+      </label>
+      <label className="field-inline">
+        <input
+          name="exigePrevisaoChegada"
+          type="checkbox"
+          defaultChecked={defaultValues?.exigePrevisaoChegada}
+        />
+        Exige previsão de chegada ao confirmar a compra (ex.: Mercado Livre, cartão de
+        crédito) — e o envio da nota fiscal depois avisa só o Financeiro, não o solicitante
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

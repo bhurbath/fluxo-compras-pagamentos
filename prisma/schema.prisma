@@ -102,6 +102,15 @@ model TipoCompra {
   // compra nem aprovação.
   despesaPessoal Boolean @default(false)
 
+  // Quando true (tipicamente Mercado Livre/cartão de crédito): ao confirmar
+  // a compra (ver confirmarCompra em workflow.ts), o comprador é obrigado a
+  // informar uma previsão de chegada, que vai para o solicitante. E, quando
+  // a nota fiscal é enviada depois (ver processarEnvioPagamento), o aviso
+  // vai só para o Financeiro — o solicitante já sabe que a compra foi feita
+  // desde a confirmação, não precisa ser notificado de novo nessa etapa
+  // puramente administrativa.
+  exigePrevisaoChegada Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.
@@ -290,6 +299,11 @@ model Solicitacao {
   // point in the flow.
   compradorId             String?
   comprador               Usuario?         @relation("SolicitacoesCompradas", fields: [compradorId], references: [id])
+  // Preenchida pelo comprador ao confirmar a compra, só quando
+  // TipoCompra.exigePrevisaoChegada é true (ver confirmarCompra em
+  // workflow.ts) — data estimada de chegada da mercadoria, comunicada ao
+  // solicitante.
+  previsaoChegada         DateTime?
   // Um ou mais caminhos no bucket de Storage (ver src/lib/storage.ts) — às
   // vezes há nota fiscal e boleto para enviar juntos, por exemplo.
   notaFiscalUrls          String[]         @default([])

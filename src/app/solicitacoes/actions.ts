@@ -247,10 +247,10 @@ export const editarEReenviarAction = comUsuarioAutenticado(
 );
 
 export const confirmarCompraAction = comUsuarioAutenticado(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async (usuario, id: string, _formData: FormData) => {
+  async (usuario, id: string, formData: FormData) => {
     try {
-      await confirmarCompra(id, usuario.id);
+      const previsaoChegada = String(formData.get("previsaoChegada") ?? "").trim() || null;
+      await confirmarCompra(id, usuario.id, { previsaoChegada });
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

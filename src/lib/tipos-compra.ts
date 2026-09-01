@@ -10,6 +10,11 @@ export type TipoCompraInput = {
   // Ver comentário no schema (model TipoCompra) — muda o formulário de
   // solicitação inteiro e dispensa aprovação/compra (ver workflow.ts).
   despesaPessoal?: boolean;
+  // Ver comentário no schema (model TipoCompra) — exige previsão de chegada
+  // ao confirmar a compra, e notifica só o Financeiro (não o solicitante)
+  // ao anexar a nota fiscal (ver confirmarCompra/processarEnvioPagamento em
+  // workflow.ts).
+  exigePrevisaoChegada?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -27,6 +32,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       nome: input.nome.trim(),
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
       despesaPessoal: input.despesaPessoal ?? false,
+      exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
     },
   });
 }
@@ -39,6 +45,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       nome: input.nome.trim(),
       compradorEhSolicitante: input.compradorEhSolicitante ?? false,
       despesaPessoal: input.despesaPessoal ?? false,
+      exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
     },
   });
 }

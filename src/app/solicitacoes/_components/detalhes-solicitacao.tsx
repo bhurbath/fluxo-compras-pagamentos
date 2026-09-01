@@ -1,4 +1,4 @@
-import { formatarReais } from "@/lib/format";
+import { formatarData, formatarReais } from "@/lib/format";
 import type { obterSolicitacao } from "@/lib/workflow";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 import { StatusPill } from "./status-pill";
@@ -166,6 +166,12 @@ export function DetalhesSolicitacao({
           <div>
             <dt className="muted">Comprador</dt>
             <dd>{solicitacao.comprador.nome}</dd>
+          </div>
+        )}
+        {solicitacao.previsaoChegada && (
+          <div>
+            <dt className="muted">Previsão de chegada</dt>
+            <dd>{formatarData(solicitacao.previsaoChegada)}</dd>
           </div>
         )}
         {solicitacao.notaFiscalUrls.length > 0 && (

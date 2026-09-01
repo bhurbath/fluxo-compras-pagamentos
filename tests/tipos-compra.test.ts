@@ -84,6 +84,25 @@ describe("tipos de compra", () => {
     expect(atualizado.despesaPessoal).toBe(false);
   });
 
+  it("cria com exigePrevisaoChegada false por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão epc" });
+    expect(tipo.exigePrevisaoChegada).toBe(false);
+  });
+
+  it("cria e atualiza exigePrevisaoChegada", async () => {
+    const tipo = await criarTipoCompra({
+      nome: "Mercado Livre teste",
+      exigePrevisaoChegada: true,
+    });
+    expect(tipo.exigePrevisaoChegada).toBe(true);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, {
+      nome: tipo.nome,
+      exigePrevisaoChegada: false,
+    });
+    expect(atualizado.exigePrevisaoChegada).toBe(false);
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

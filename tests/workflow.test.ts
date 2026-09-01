@@ -64,10 +64,14 @@ async function criarDepartamento(
 
 async function criarTipoCompra(
   nome: string,
-  overrides: { despesaPessoal?: boolean } = {}
+  overrides: { despesaPessoal?: boolean; exigePrevisaoChegada?: boolean } = {}
 ) {
   return testDb.tipoCompra.create({
-    data: { nome, despesaPessoal: overrides.despesaPessoal ?? false },
+    data: {
+      nome,
+      despesaPessoal: overrides.despesaPessoal ?? false,
+      exigePrevisaoChegada: overrides.exigePrevisaoChegada ?? false,
+    },
   });
 }
 
@@ -171,9 +175,12 @@ async function criarSolicitacaoAprovada(sufixo: string) {
 // Creates a full solicitação already in APROVADO with a comprador already
 // designated (via matriz) — the starting point every
 // confirmarCompra/enviarParaPagamento test needs.
-async function criarSolicitacaoComCompradorDesignado(sufixo: string) {
+async function criarSolicitacaoComCompradorDesignado(
+  sufixo: string,
+  tipoOverrides: { exigePrevisaoChegada?: boolean } = {}
+) {
   const { enviada, departamento, comprador } =
-    await criarSolicitacaoEnviadaComEntradaMatriz(sufixo);
+    await criarSolicitacaoEnviadaComEntradaMatriz(sufixo, tipoOverrides);
   const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
   const solicitante = await testDb.usuario.findUniqueOrThrow({
     where: { id: aprovada.solicitanteId },
@@ -210,11 +217,14 @@ async function criarEntradaMatriz(
 // already set up for its (departamento, tipoCompra) pair — the shared setup
 // every "designa automaticamente pela matriz" test needs before calling
 // aprovarNivel1 itself.
-async function criarSolicitacaoEnviadaComEntradaMatriz(sufixo: string) {
+async function criarSolicitacaoEnviadaComEntradaMatriz(
+  sufixo: string,
+  tipoOverrides: { exigePrevisaoChegada?: boolean } = {}
+) {
   const comprador = await criarUsuario(`comp-${sufixo}`);
   await criarFaixa("0", null, false);
   const departamento = await criarDepartamento(sufixo);
-  const tipo = await criarTipoCompra(`Tipo ${sufixo}`);
+  const tipo = await criarTipoCompra(`Tipo ${sufixo}`, tipoOverrides);
   await criarEntradaMatriz(departamento.id, tipo.id, comprador.id);
   const solicitante = await criarUsuario(`sol-${sufixo}`);
   const campos = await criarCamposObrigatorios(sufixo);
@@ -1651,6 +1661,46 @@ describe("workflow: confirmarCompra", () => {
       expect.objectContaining({ to: solicitante.email })
     );
   });
+
+  it("não exige previsão de chegada quando o tipo de compra não exige", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("cc6");
+
+    const confirmada = await confirmarCompra(solicitacao.id, comprador.id);
+
+    expect(confirmada.status).toBe("COMPRA_CONFIRMADA");
+    expect(confirmada.previsaoChegada).toBeNull();
+  });
+
+  it("exige previsão de chegada quando o tipo de compra exige (ex.: Mercado Livre)", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoComCompradorDesignado("cc7", {
+      exigePrevisaoChegada: true,
+    });
+
+    await expect(confirmarCompra(solicitacao.id, comprador.id)).rejects.toThrow(
+      /previsão de chegada/
+    );
+  });
+
+  it("grava a previsão de chegada e avisa o solicitante dela por e-mail", async () => {
+    const { solicitacao, comprador, solicitante } = await criarSolicitacaoComCompradorDesignado(
+      "cc8",
+      { exigePrevisaoChegada: true }
+    );
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const confirmada = await confirmarCompra(solicitacao.id, comprador.id, {
+      previsaoChegada: "2026-09-30",
+    });
+
+    expect(confirmada.previsaoChegada?.toISOString().slice(0, 10)).toBe("2026-09-30");
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: solicitante.email,
+        html: expect.stringContaining("Previsão de chegada"),
+      })
+    );
+  });
 });
 
 // Input válido para enviarParaPagamento — a maioria dos testes só quer
@@ -1819,6 +1869,25 @@ describe("workflow: enviarParaPagamento", () => {
     await expect(
       enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO)
     ).rejects.toThrow();
+  });
+
+  it("notifica só o Financeiro (não o solicitante) quando o tipo de compra exige previsão de chegada", async () => {
+    const { solicitacao, comprador, solicitante } = await criarSolicitacaoComCompradorDesignado(
+      "ep8",
+      { exigePrevisaoChegada: true }
+    );
+    await confirmarCompra(solicitacao.id, comprador.id, { previsaoChegada: "2026-09-30" });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await enviarParaPagamento(solicitacao.id, comprador.id, INPUT_PAGAMENTO_VALIDO);
+
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
   });
 });
 
