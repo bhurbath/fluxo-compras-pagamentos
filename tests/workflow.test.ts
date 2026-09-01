@@ -414,7 +414,7 @@ describe("workflow: enviarSolicitacao", () => {
     expect(enviada.status).toBe("ENVIADO");
   });
 
-  it("pula o nível 1 e vai direto para APROVADO quando o solicitante é o responsável e a alçada não exige nível 2", async () => {
+  it("pula o nível 1 e vai para AGUARDANDO_NIVEL2 quando o solicitante é o responsável, mesmo que a alçada não exija nível 2", async () => {
     const responsavel = await criarUsuario("resp");
     const departamento = await criarDepartamento("mkt", { responsavelId: responsavel.id });
     const tipo = await criarTipoCompra("Mercado Livre");
@@ -431,7 +431,7 @@ describe("workflow: enviarSolicitacao", () => {
 
     const enviada = await enviarSolicitacao(rascunho.id);
 
-    expect(enviada.status).toBe("APROVADO");
+    expect(enviada.status).toBe("AGUARDANDO_NIVEL2");
   });
 
   it("pula o nível 1 e vai para AGUARDANDO_NIVEL2 quando a alçada exige nível 2 e o solicitante não é o diretor", async () => {
@@ -636,10 +636,13 @@ describe("workflow: enviarSolicitacao", () => {
     );
   });
 
-  it("não envia e-mail de responsável quando a solicitação pula direto para aprovado", async () => {
+  it("notifica o diretor por e-mail mesmo quando a alçada não exige nível 2, se o solicitante é o responsável", async () => {
     const enviarSpy = vi.spyOn(fake, "send");
     const responsavel = await criarUsuario("resp");
     const departamento = await criarDepartamento("mkt", { responsavelId: responsavel.id });
+    const diretor = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.diretorId },
+    });
     const tipo = await criarTipoCompra("Mercado Livre");
     const campos = await criarCamposObrigatorios();
     await criarFaixa("0", "1000", false);
@@ -654,13 +657,15 @@ describe("workflow: enviarSolicitacao", () => {
 
     await enviarSolicitacao(rascunho.id);
 
-    // E-mail de confirmação ao solicitante + aviso ao Financeiro (sem
-    // entrada na matriz para esse tipo, ver designarComprador) — nenhum dos
-    // dois é um e-mail de aprovação pendente, já que essa etapa foi pulada
-    // automaticamente (o solicitante aqui é o próprio responsável).
+    // E-mail de confirmação ao solicitante + aviso de aprovação pendente ao
+    // diretor — o nível 1 foi pulado (o solicitante é o próprio
+    // responsável), mas o nível 2 nunca é, nesse caso.
     expect(enviarSpy).toHaveBeenCalledTimes(2);
-    expect(enviarSpy).not.toHaveBeenCalledWith(
-      expect.objectContaining({ subject: expect.stringContaining("aguardando sua aprovação") })
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: diretor.email,
+        subject: expect.stringContaining("aguardando sua aprovação"),
+      })
     );
   });
 });
@@ -1132,7 +1137,7 @@ describe("workflow: reenviarSolicitacao", () => {
 
     const reenviada = await reenviarSolicitacao(solicitacao.id);
 
-    expect(reenviada.status).toBe("APROVADO");
+    expect(reenviada.status).toBe("AGUARDANDO_NIVEL2");
   });
 
   it("lança erro ao tentar reenviar uma solicitação que não está rejeitada", async () => {
@@ -1330,11 +1335,14 @@ describe("workflow: designarComprador (automático)", () => {
     expect(aprovada.compradorId).toBe(comprador.id);
   });
 
-  it("designa automaticamente também quando o envio pula direto para aprovado", async () => {
+  it("designa automaticamente também quando o envio pula direto para aprovado (solicitante é responsável e diretor)", async () => {
     const comprador = await criarUsuario("comp-m6");
     await criarFaixa("0", null, false);
     const pessoa = await criarUsuario("resp-m6");
-    const departamento = await criarDepartamento("m6", { responsavelId: pessoa.id });
+    const departamento = await criarDepartamento("m6", {
+      responsavelId: pessoa.id,
+      diretorId: pessoa.id,
+    });
     const tipo = await criarTipoCompra("Tipo m6");
     await criarEntradaMatriz(departamento.id, tipo.id, comprador.id);
     const campos = await criarCamposObrigatorios("m6");
@@ -2395,7 +2403,10 @@ describe("workflow: solicitação sem compra", () => {
   it("ao ser aprovada com o envio pulando direto para aprovado, também vai direto para AGUARDANDO_PAGAMENTO", async () => {
     await criarFaixa("0", null, false);
     const pessoa = await criarUsuario("resp-sc5");
-    const departamento = await criarDepartamento("sc5", { responsavelId: pessoa.id });
+    const departamento = await criarDepartamento("sc5", {
+      responsavelId: pessoa.id,
+      diretorId: pessoa.id,
+    });
     const tipo = await criarTipoCompra("Tipo sc5");
     const campos = await criarCamposObrigatorios("sc5");
     const rascunho = await criarSolicitacao({

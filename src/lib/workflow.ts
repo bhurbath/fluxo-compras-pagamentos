@@ -272,13 +272,16 @@ function decidirStatusPosNivel1(exigeNivel2: boolean, pulaNivel2: boolean): Reso
   return { status: StatusSolicitacao.AGUARDANDO_NIVEL2, evento: "aguardando_nivel2" };
 }
 
-// Applies the auto-approval rule at every level a fresh submission could
-// land on, in one pass — not just level 1. If level 1 is skipped (solicitante
-// is the responsável) and the alçada requires level 2, level 2 is checked
-// too (solicitante is the diretor), so a request never lands on
-// AGUARDANDO_NIVEL2 waiting on an approver who can't approve their own
-// request. aprovarNivel1 re-applies the level-2 check on its own path into
-// AGUARDANDO_NIVEL2 — this only covers the submission path.
+// Applies the auto-approval rule a fresh submission could land on. Se o
+// solicitante é o responsável do departamento (pulaNivel1), ele não tem
+// como aprovar a própria solicitação — e, diferente de um solicitante
+// comum, não existe um nível abaixo dele fazendo essa checagem por conta da
+// alçada. Por isso, nesse caso, a aprovação do diretor é sempre exigida,
+// independente do valor cair numa faixa que dispensaria nível 2 para
+// qualquer outro solicitante — a alçada só continua decidindo o caminho
+// normal (ENVIADO) quando o solicitante não é o responsável. A única
+// exceção é quando o solicitante também é o diretor do departamento: aí não
+// sobra ninguém para aprovar, e a solicitação é aprovada automaticamente.
 async function resolverEstadoInicial(solicitacao: {
   solicitanteId: string;
   valor: Prisma.Decimal;
@@ -295,20 +298,15 @@ async function resolverEstadoInicial(solicitacao: {
     return { status: StatusSolicitacao.ENVIADO, evento: "enviado" };
   }
 
-  const exigeNivel2 = await resolverExigeNivel2(solicitacao.valor);
-  if (!exigeNivel2) {
-    return {
-      ...decidirStatusPosNivel1(exigeNivel2, false),
-      detalhe:
-        "Aprovação de nível 1 pulada automaticamente (solicitante é o responsável " +
-        "do departamento); a alçada não exige aprovação de nível 2.",
-    };
-  }
+  // Mesmo motivo do bloco acima: precisa lançar cedo se nenhuma faixa cobre
+  // o valor, mesmo que o resultado não decida mais o caminho abaixo.
+  await resolverExigeNivel2(solicitacao.valor);
 
   const pulaNivel2 = solicitacao.solicitanteId === solicitacao.departamento.diretorId;
   if (pulaNivel2) {
     return {
-      ...decidirStatusPosNivel1(exigeNivel2, pulaNivel2),
+      status: StatusSolicitacao.APROVADO,
+      evento: "aprovado",
       detalhe:
         "Aprovação de nível 1 e de nível 2 puladas automaticamente (solicitante " +
         "é responsável e diretor do departamento).",
@@ -316,10 +314,12 @@ async function resolverEstadoInicial(solicitacao: {
   }
 
   return {
-    ...decidirStatusPosNivel1(exigeNivel2, pulaNivel2),
+    status: StatusSolicitacao.AGUARDANDO_NIVEL2,
+    evento: "aguardando_nivel2",
     detalhe:
-      "Aprovação de nível 1 pulada automaticamente (solicitante é o responsável " +
-      "do departamento).",
+      "Aprovação de nível 1 pulada automaticamente (solicitante é o responsável do " +
+      "departamento); aprovação de nível 2 (diretor) é sempre exigida nesse caso, " +
+      "independente da alçada.",
   };
 }
 
