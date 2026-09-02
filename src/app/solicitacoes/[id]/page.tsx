@@ -46,15 +46,19 @@ export default async function SolicitacaoDetalhePage({
   const solicitacao = await obterSolicitacao(id);
 
   // The solicitante can always view their own request. The department's
-  // responsável (nível 1), diretor (nível 2), the designated comprador, or
-  // Financeiro can view it too, but only once it has actually been
-  // submitted — not a draft the solicitante hasn't sent for approval yet.
+  // responsável (nível 1), diretor (nível 2), the designated comprador,
+  // anyone who has ever acted on it (ex: um comprador que recusou a compra
+  // — rejeitar() limpa compradorId, então sem isso ele perderia acesso à
+  // própria solicitação logo depois de agir nela), or Financeiro can view
+  // it too, but only once it has actually been submitted — not a draft the
+  // solicitante hasn't sent for approval yet.
   const podeVer =
     solicitacao !== null &&
     (solicitacao.solicitanteId === usuario.id ||
       ((solicitacao.departamento.responsavelId === usuario.id ||
         solicitacao.departamento.diretorId === usuario.id ||
         solicitacao.compradorId === usuario.id ||
+        solicitacao.historico.some((h) => h.atorId === usuario.id) ||
         usuario.flagFinanceiro) &&
         solicitacao.status !== StatusSolicitacao.RASCUNHO));
   if (!solicitacao || !podeVer) {
