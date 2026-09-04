@@ -24,11 +24,18 @@ import { FormaPagamento, MetodoPagamento, type Usuario } from "@prisma/client";
 // Um <input type="file" multiple> manda um File por entrada repetida sob o
 // mesmo name — formData.getAll() (não .get(), que só pega a primeira) é o
 // jeito de ler todas. Faz o upload de cada uma em paralelo.
-async function lerArquivos(formData: FormData, name: string, solicitacaoId: string): Promise<string[]> {
+async function lerArquivos(
+  formData: FormData,
+  name: string,
+  solicitacaoId: string,
+  extensoesPermitidas?: string[]
+): Promise<string[]> {
   const arquivos = formData
     .getAll(name)
     .filter((valor): valor is File => valor instanceof File && valor.size > 0);
-  return Promise.all(arquivos.map((arquivo) => uploadAnexo(arquivo, solicitacaoId)));
+  return Promise.all(
+    arquivos.map((arquivo) => uploadAnexo(arquivo, solicitacaoId, extensoesPermitidas))
+  );
 }
 
 // Anexos já existentes (edição de uma solicitação sem compra rejeitada, sem
@@ -79,6 +86,12 @@ async function lerCotacaoUrl(
   return cotacaoUrlAtual;
 }
 
+// Anexos de despesa de pessoal também aceitam CSV/Excel (ex.: planilha de
+// reembolso de plano de saúde, relatório de cartão), além dos formatos
+// padrão de todo outro anexo do sistema — ver uploadAnexo em
+// src/lib/storage.ts.
+const EXTENSOES_DESPESA_PESSOAL = ["pdf", "jpg", "jpeg", "png", "csv", "xls", "xlsx"];
+
 // Despesa de pessoal (ver TipoCompra.despesaPessoal) — campos próprios, bem
 // mais enxutos que o resto do formulário. Mesmo padrão de "mantém o anexo
 // atual se nenhum arquivo novo vier" que lerCamposSemCompra usa.
@@ -98,7 +111,12 @@ async function lerCamposDespesaPessoal(
     "dataVencimento",
     "dadosPagamentoDespesa",
   ]);
-  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  const enviados = await lerArquivos(
+    formData,
+    "notaFiscal",
+    solicitacaoId,
+    EXTENSOES_DESPESA_PESSOAL
+  );
   return {
     categoriaDespesaPessoalId: campos.categoriaDespesaPessoalId || null,
     numeroPedido: campos.numeroPedido || null,

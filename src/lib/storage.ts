@@ -5,7 +5,17 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // (gerarUrlAssinada) é a única forma de acesso, e expira.
 const BUCKET = "anexos-solicitacoes";
 
-const EXTENSOES_PERMITIDAS = ["pdf", "jpg", "jpeg", "png"];
+const EXTENSOES_PADRAO = ["pdf", "jpg", "jpeg", "png"];
+
+// pt-BR readable join for the error message below — "PDF, JPG, PNG" or
+// "PDF, JPG ou PNG" depending on how many.
+function listaLegivel(extensoes: string[]): string {
+  const maiusculas = extensoes.map((e) => e.toUpperCase());
+  if (maiusculas.length <= 1) {
+    return maiusculas.join("");
+  }
+  return `${maiusculas.slice(0, -1).join(", ")} ou ${maiusculas[maiusculas.length - 1]}`;
+}
 
 let client: SupabaseClient | undefined;
 
@@ -54,10 +64,17 @@ function getStorageClient(): SupabaseClient {
 // namespaced pela solicitação, e devolve esse caminho — não uma URL, já que
 // o bucket é privado; quem exibe o anexo precisa gerar uma URL assinada
 // (gerarUrlAssinada) na hora de renderizar.
-export async function uploadAnexo(file: File, solicitacaoId: string): Promise<string> {
+export async function uploadAnexo(
+  file: File,
+  solicitacaoId: string,
+  // Alguns anexos aceitam formatos além do padrão (ex.: os da despesa de
+  // pessoal, que também aceitam CSV/Excel — ver lerCamposDespesaPessoal em
+  // actions.ts) — cada chamador decide, o padrão continua o mesmo de antes.
+  extensoesPermitidas: string[] = EXTENSOES_PADRAO
+): Promise<string> {
   const extensao = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!EXTENSOES_PERMITIDAS.includes(extensao)) {
-    throw new Error("Formato de arquivo não suportado. Envie um PDF, JPG ou PNG.");
+  if (!extensoesPermitidas.includes(extensao)) {
+    throw new Error(`Formato de arquivo não suportado. Envie um ${listaLegivel(extensoesPermitidas)}.`);
   }
 
   const caminho = `${solicitacaoId}/${Date.now()}-${crypto.randomUUID()}.${extensao}`;

@@ -416,12 +416,12 @@ export function CamposSolicitacao({
           />
         </label>
         <label className="field">
-          Anexos (nota fiscal, guia, boleto — PDF, JPG ou PNG — pode selecionar mais de um
-          arquivo)
+          Anexos (nota fiscal, guia, boleto, planilha — PDF, JPG, PNG, CSV ou Excel — pode
+          selecionar mais de um arquivo)
           <input
             type="file"
             name="notaFiscal"
-            accept=".pdf,.jpg,.jpeg,.png"
+            accept=".pdf,.jpg,.jpeg,.png,.csv,.xls,.xlsx"
             multiple
             className="input-field"
           />
