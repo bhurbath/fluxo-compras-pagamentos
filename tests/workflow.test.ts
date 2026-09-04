@@ -192,10 +192,19 @@ async function criarSolicitacaoComCompradorDesignado(
 // point every recusarPagamento/registrarPagamento/listarPendentesPagamento
 // test needs. Goes through confirmarCompra + enviarParaPagamento for real
 // rather than faking the status directly.
-async function criarSolicitacaoAguardandoPagamento(sufixo: string) {
-  const { solicitacao, comprador, solicitante } =
-    await criarSolicitacaoComCompradorDesignado(sufixo);
-  await confirmarCompra(solicitacao.id, comprador.id);
+async function criarSolicitacaoAguardandoPagamento(
+  sufixo: string,
+  tipoOverrides: { exigePrevisaoChegada?: boolean } = {}
+) {
+  const { solicitacao, comprador, solicitante } = await criarSolicitacaoComCompradorDesignado(
+    sufixo,
+    tipoOverrides
+  );
+  await confirmarCompra(
+    solicitacao.id,
+    comprador.id,
+    tipoOverrides.exigePrevisaoChegada ? { previsaoChegada: "2026-09-30" } : {}
+  );
   const aguardandoPagamento = await enviarParaPagamento(solicitacao.id, comprador.id, {
     notaFiscalUrls: [`${sufixo}/nota-fiscal.pdf`],
     metodoPagamento: "PIX",
@@ -2313,6 +2322,29 @@ describe("workflow: registrarPagamento", () => {
 
     expect(enviarSpy).toHaveBeenCalledWith(
       expect.objectContaining({ to: solicitante.email })
+    );
+  });
+
+  it("dispensa o comprovante quando o tipo de compra exige previsão de chegada (ex.: Mercado Livre)", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg7", {
+      exigePrevisaoChegada: true,
+    });
+    const financeiro = await criarUsuario("fin-pg7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBeNull();
+  });
+
+  it("continua exigindo o comprovante para tipos de compra que não exigem previsão de chegada", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg8");
+    const financeiro = await criarUsuario("fin-pg8");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    await expect(registrarPagamento(solicitacao.id, financeiro.id, {})).rejects.toThrow(
+      /comprovante/
     );
   });
 });

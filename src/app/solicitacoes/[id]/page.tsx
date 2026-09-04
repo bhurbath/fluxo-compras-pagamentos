@@ -201,6 +201,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             registrarAction={registrarPagamentoAction}
             recusarAction={recusarPagamentoAction}
+            dispensaComprovante={solicitacao.tipoCompra.exigePrevisaoChegada}
           />
         )}
 

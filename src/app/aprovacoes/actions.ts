@@ -85,18 +85,20 @@ export const recusarPagamentoAction = withFinanceiro(
 export const registrarPagamentoAction = withFinanceiro(
   async (usuario, id: string, formData: FormData) => {
     const comprovante = formData.get("comprovante");
-    if (!(comprovante instanceof File) || comprovante.size === 0) {
-      redirectComErro(`/solicitacoes/${id}`, "O comprovante de pagamento é obrigatório.");
-    }
+    // Obrigatório ou não depende do tipo de compra (Mercado Livre/cartão de
+    // crédito dispensam — ver TipoCompra.exigePrevisaoChegada), o que só
+    // registrarPagamento (workflow.ts) sabe decidir; aqui só lê o que veio.
+    const temArquivo = comprovante instanceof File && comprovante.size > 0;
 
     try {
-      const comprovantePagamentoUrl = await uploadAnexo(comprovante, id);
-      // Validade maior que o padrão de página (1h) — o e-mail pode ser
-      // aberto dias depois de enviado.
-      const comprovanteUrlAssinada = await gerarUrlAssinada(
-        comprovantePagamentoUrl,
-        7 * 24 * 60 * 60
-      );
+      let comprovantePagamentoUrl: string | null = null;
+      let comprovanteUrlAssinada: string | null = null;
+      if (temArquivo) {
+        comprovantePagamentoUrl = await uploadAnexo(comprovante as File, id);
+        // Validade maior que o padrão de página (1h) — o e-mail pode ser
+        // aberto dias depois de enviado.
+        comprovanteUrlAssinada = await gerarUrlAssinada(comprovantePagamentoUrl, 7 * 24 * 60 * 60);
+      }
       await registrarPagamento(id, usuario.id, {
         comprovantePagamentoUrl,
         comprovanteUrlAssinada,

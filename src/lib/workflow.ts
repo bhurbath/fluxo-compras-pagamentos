@@ -1294,8 +1294,12 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
 
 export type RegistrarPagamentoInput = {
   // Mesmo esquema de notaFiscalUrl em enviarParaPagamento: caminho no bucket
-  // de Storage, não uma URL pública — ver src/lib/storage.ts.
-  comprovantePagamentoUrl: string;
+  // de Storage, não uma URL pública — ver src/lib/storage.ts. Ausente/nulo é
+  // válido só quando TipoCompra.exigePrevisaoChegada (Mercado Livre, cartão
+  // de crédito) — o Financeiro pode confirmar o pagamento sem anexar nada
+  // nesses casos (o comprovante desses meios de pagamento normalmente já
+  // está registrado na fatura do cartão/na conta Mercado Livre).
+  comprovantePagamentoUrl?: string | null;
   // Link de download já assinado (gerarUrlAssinada, com validade maior que
   // o padrão — o e-mail pode ser aberto dias depois), gerado por quem chama
   // essa função a partir do mesmo comprovantePagamentoUrl acima. Buscar a
@@ -1311,17 +1315,20 @@ export async function registrarPagamento(
   atorId: string,
   input: RegistrarPagamentoInput
 ) {
-  const comprovanteTrim = input.comprovantePagamentoUrl.trim();
-  if (!comprovanteTrim) {
-    throw new Error("O comprovante de pagamento é obrigatório.");
-  }
+  const comprovanteTrim = input.comprovantePagamentoUrl?.trim() || null;
 
   const [, solicitacao] = await Promise.all([
     requireFinanceiroAtor(atorId, "Só o Financeiro pode registrar um pagamento."),
-    getDb().solicitacao.findUnique({ where: { id }, include: { solicitante: true } }),
+    getDb().solicitacao.findUnique({
+      where: { id },
+      include: { solicitante: true, tipoCompra: true },
+    }),
   ]);
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
+  }
+  if (!solicitacao.tipoCompra.exigePrevisaoChegada && !comprovanteTrim) {
+    throw new Error("O comprovante de pagamento é obrigatório.");
   }
   if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
     throw new Error(
@@ -1348,7 +1355,9 @@ export async function registrarPagamento(
       (input.comprovanteUrlAssinada
         ? `<p><a href="${input.comprovanteUrlAssinada}">Baixar comprovante</a> ` +
           "(link válido por 7 dias).</p>"
-        : "<p>O comprovante já está disponível na página da solicitação.</p>") +
+        : comprovanteTrim
+          ? "<p>O comprovante já está disponível na página da solicitação.</p>"
+          : "") +
       linkAcessoHtml(id),
   });
 
