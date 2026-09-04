@@ -13,6 +13,7 @@ export function TipoCompraForm({
     exigePrevisaoChegada: boolean;
     dispensaFornecedorForma: boolean;
     empresaFixaId: string | null;
+    rdv: boolean;
   };
   empresas: Lista[];
   action: (formData: FormData) => Promise<void>;
@@ -83,6 +84,15 @@ export function TipoCompraForm({
           Quando definida, toda solicitação desse tipo usa sempre essa empresa — o campo
           some do formulário de solicitação.
         </span>
+      </label>
+      <label className="field-inline">
+        <input
+          name="rdv"
+          type="checkbox"
+          defaultChecked={defaultValues?.rdv}
+        />
+        É RDV (prestação de contas de reembolso, já aprovada pelo gestor em outro sistema —
+        formulário próprio, sem aprovação nem etapa de compra, direto para pagamento)
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

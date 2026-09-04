@@ -125,6 +125,15 @@ model TipoCompra {
   empresaFixaId String?
   empresaFixa   Empresa? @relation(fields: [empresaFixaId], references: [id], onDelete: Restrict)
 
+  // Quando true (RDV — prestação de contas de reembolso enviada pelo
+  // colaborador): já vem aprovada pelo gestor em outro sistema, então a
+  // aprovação é sempre dispensada aqui também (mesmo mecanismo de
+  // despesaPessoal — ver resolverEstadoInicial) e a solicitação já nasce
+  // marcada semCompra, indo direto para AGUARDANDO_PAGAMENTO. O formulário
+  // muda para os campos próprios de uma RDV — ver
+  // validarCriarSolicitacao/mapCamposSolicitacao em workflow.ts.
+  rdv Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.
@@ -311,6 +320,15 @@ model Solicitacao {
   categoriaDespesaPessoal   CategoriaDespesaPessoal? @relation(fields: [categoriaDespesaPessoalId], references: [id], onDelete: Restrict)
   numeroPedido              String?
   dataVencimento            DateTime?
+
+  // RDV (ver TipoCompra.rdv): prestação de contas de reembolso já aprovada
+  // pelo gestor em outro sistema. valor (campo já existente acima) é usado
+  // como o valor a reembolsar; nenhum dos campos abaixo existe fora desse
+  // tipo de solicitação.
+  valorCartaoOnfly   Decimal? @db.Decimal(12, 2)
+  dataRdv            DateTime?
+  numeroRdv          String?
+  possuiAdiantamento Boolean?
 
   // Populated by later tickets (comprador assignment, purchase, payment) —
   // nullable because they don't exist until the solicitação reaches that

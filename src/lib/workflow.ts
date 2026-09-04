@@ -69,6 +69,12 @@ export type CriarSolicitacaoInput = {
   categoriaDespesaPessoalId?: string | null;
   numeroPedido?: string | null;
   dataVencimento?: string | null;
+  // RDV (ver TipoCompra.rdv): todos obrigatórios. valor (acima) é o valor a
+  // reembolsar.
+  valorCartaoOnfly?: string | null;
+  dataRdv?: string | null;
+  numeroRdv?: string | null;
+  possuiAdiantamento?: boolean | null;
 };
 
 const CAMPOS_OBRIGATORIOS: {
@@ -97,6 +103,7 @@ function validarCriarSolicitacao(
     despesaPessoal: boolean;
     dispensaFornecedorForma: boolean;
     empresaFixaId: string | null;
+    rdv: boolean;
   }
 ): void {
   if (!input.descricao.trim()) {
@@ -113,18 +120,21 @@ function validarCriarSolicitacao(
   }
 
   // Fornecedor e empresa são dispensados independentemente do tipo de
-  // solicitação (padrão, sem compra ou despesa de pessoal) — dependem só
-  // dessas duas flags do tipo de compra, checadas primeiro.
-  if (!tipoCompra.dispensaFornecedorForma && !input.fornecedor?.trim()) {
+  // solicitação (padrão, sem compra, despesa de pessoal ou RDV) — dependem
+  // só dessas flags do tipo de compra, checadas primeiro. RDV nunca tem
+  // fornecedor (é reembolso ao próprio solicitante, não uma compra de
+  // terceiro).
+  if (!tipoCompra.dispensaFornecedorForma && !tipoCompra.rdv && !input.fornecedor?.trim()) {
     throw new Error("O fornecedor é obrigatório.");
   }
   if (!tipoCompra.empresaFixaId && !input.empresaId?.trim()) {
     throw new Error("A empresa é obrigatória.");
   }
 
-  // Despesa de pessoal tem seu próprio conjunto de campos obrigatórios,
-  // menor e diferente do padrão — nem passa pelos campos contábeis/forma de
-  // pagamento/semCompra abaixo, que essa solicitação nem coleta.
+  // Despesa de pessoal e RDV têm cada um seu próprio conjunto de campos
+  // obrigatórios, menor e diferente do padrão — nem passam pelos campos
+  // contábeis/forma de pagamento/semCompra abaixo, que nenhum dos dois
+  // coleta.
   if (tipoCompra.despesaPessoal) {
     if (!input.categoriaDespesaPessoalId?.trim()) {
       throw new Error("A categoria da despesa é obrigatória.");
@@ -134,6 +144,28 @@ function validarCriarSolicitacao(
     }
     if (!input.notaFiscalUrls?.length) {
       throw new Error("Pelo menos um anexo é obrigatório para uma despesa de pessoal.");
+    }
+    return;
+  }
+
+  if (tipoCompra.rdv) {
+    if (!input.valorCartaoOnfly?.trim()) {
+      throw new Error("O valor pago no cartão ONFLY é obrigatório.");
+    }
+    if (paraDecimal(input.valorCartaoOnfly, "O valor pago no cartão ONFLY").lessThan(0)) {
+      throw new Error("O valor pago no cartão ONFLY não pode ser negativo.");
+    }
+    if (!input.dataRdv?.trim()) {
+      throw new Error("A data da RDV é obrigatória.");
+    }
+    if (!input.numeroRdv?.trim()) {
+      throw new Error("O nº da RDV é obrigatório.");
+    }
+    if (typeof input.possuiAdiantamento !== "boolean") {
+      throw new Error("Informe se a RDV possui adiantamento.");
+    }
+    if (!input.notaFiscalUrls?.length) {
+      throw new Error("Pelo menos um anexo é obrigatório para uma RDV.");
     }
     return;
   }
@@ -221,22 +253,29 @@ type TipoCompraFlags = {
   despesaPessoal: boolean;
   dispensaFornecedorForma: boolean;
   empresaFixaId: string | null;
+  rdv: boolean;
 };
 
 // The fields both criarSolicitacao and editarSolicitacao write — everything
 // about "the request" except who made it and what status it's in, which
 // each of those two functions owns differently (create sets both fresh;
-// edit changes neither). despesaPessoal força semCompra: true mesmo que o
-// formulário (que nem mostra a caixa nesse tipo) não tenha mandado nada —
-// factualmente correto (não existe etapa de compra) e é o que faz todo o
-// resto do workflow (designarComprador, recusarPagamento, ...) já tratar
-// essa solicitação do jeito certo sem precisar de mais nenhuma checagem
-// espalhada por aí. empresaId nunca confia no que veio do formulário quando
-// há empresaFixaId — o servidor decide, não o cliente (o campo nem aparece
-// no formulário nesse caso, mas mesmo que viesse algo seria ignorado).
+// edit changes neither). despesaPessoal/rdv forçam semCompra: true mesmo
+// que o formulário (que nem mostra a caixa nesses tipos) não tenha mandado
+// nada — factualmente correto (nenhum dos dois tem etapa de compra) e é o
+// que faz todo o resto do workflow (designarComprador, recusarPagamento,
+// ...) já tratar essa solicitação do jeito certo sem precisar de mais
+// nenhuma checagem espalhada por aí. empresaId nunca confia no que veio do
+// formulário quando há empresaFixaId — o servidor decide, não o cliente (o
+// campo nem aparece no formulário nesse caso, mas mesmo que viesse algo
+// seria ignorado).
 function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoCompraFlags) {
-  const { despesaPessoal, dispensaFornecedorForma, empresaFixaId } = tipoCompra;
-  const semCompra = despesaPessoal || (input.semCompra ?? false);
+  const { despesaPessoal, dispensaFornecedorForma, empresaFixaId, rdv } = tipoCompra;
+  // Despesa de pessoal e RDV compartilham o mesmo desvio de aprovação/compra
+  // (ver resolverEstadoInicial) — mas têm conjuntos de campos totalmente
+  // diferentes entre si, então essa combinação só vale pra essas duas
+  // decisões, não pra mapear os campos abaixo.
+  const semAprovacaoNemCompra = despesaPessoal || rdv;
+  const semCompra = semAprovacaoNemCompra || (input.semCompra ?? false);
   const empresaId = empresaFixaId ?? input.empresaId;
   if (!empresaId) {
     // Não deveria acontecer — validarCriarSolicitacao já garante um dos
@@ -250,23 +289,28 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     tipoCompraId: input.tipoCompraId,
     descricao: input.descricao.trim(),
     valor: input.valor,
-    fornecedor: dispensaFornecedorForma ? null : input.fornecedor?.trim() || null,
-    formaPagamento: despesaPessoal || dispensaFornecedorForma ? null : input.formaPagamento,
-    centroCustoId: despesaPessoal ? null : input.centroCustoId,
-    centroResultadoId: despesaPessoal ? null : input.centroResultadoId,
-    contaContabilId: despesaPessoal ? null : input.contaContabilId,
+    fornecedor: dispensaFornecedorForma || rdv ? null : input.fornecedor?.trim() || null,
+    formaPagamento: semAprovacaoNemCompra || dispensaFornecedorForma ? null : input.formaPagamento,
+    centroCustoId: semAprovacaoNemCompra ? null : input.centroCustoId,
+    centroResultadoId: semAprovacaoNemCompra ? null : input.centroResultadoId,
+    contaContabilId: semAprovacaoNemCompra ? null : input.contaContabilId,
     empresaId,
-    linkCompra: despesaPessoal ? null : input.linkCompra?.trim() || null,
+    linkCompra: semAprovacaoNemCompra ? null : input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
-    cotacaoUrl: despesaPessoal ? null : input.cotacaoUrl?.trim() || null,
+    cotacaoUrl: semAprovacaoNemCompra ? null : input.cotacaoUrl?.trim() || null,
     semCompra,
     notaFiscalUrls: semCompra ? (input.notaFiscalUrls ?? []) : [],
-    metodoPagamento: !despesaPessoal && semCompra ? input.metodoPagamento ?? null : null,
+    metodoPagamento: !semAprovacaoNemCompra && semCompra ? input.metodoPagamento ?? null : null,
     dadosPagamento: semCompra ? input.dadosPagamento?.trim() || null : null,
-    fornecedorDocumento: !despesaPessoal && semCompra ? input.fornecedorDocumento?.trim() || null : null,
+    fornecedorDocumento:
+      !semAprovacaoNemCompra && semCompra ? input.fornecedorDocumento?.trim() || null : null,
     categoriaDespesaPessoalId: despesaPessoal ? input.categoriaDespesaPessoalId?.trim() || null : null,
     numeroPedido: despesaPessoal ? input.numeroPedido?.trim() || null : null,
     dataVencimento: despesaPessoal && input.dataVencimento ? new Date(input.dataVencimento) : null,
+    valorCartaoOnfly: rdv ? input.valorCartaoOnfly?.trim() || null : null,
+    dataRdv: rdv && input.dataRdv ? new Date(input.dataRdv) : null,
+    numeroRdv: rdv ? input.numeroRdv?.trim() || null : null,
+    possuiAdiantamento: rdv ? (input.possuiAdiantamento ?? false) : null,
   };
 }
 
@@ -393,17 +437,20 @@ async function resolverEstadoInicial(solicitacao: {
   solicitanteId: string;
   valor: Prisma.Decimal;
   departamento: { responsavelId: string; diretorId: string };
-  tipoCompra: { despesaPessoal: boolean };
+  tipoCompra: { despesaPessoal: boolean; rdv: boolean };
 }): Promise<ResultadoResolucao> {
-  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca passa por
-  // aprovação, nem de nível 1 nem de nível 2 — independente de quem é o
-  // solicitante ou de qual faixa de alçada o valor cairia. Por isso nem
-  // chega a checar pulaNivel1/alçada abaixo.
-  if (solicitacao.tipoCompra.despesaPessoal) {
+  // Despesa de pessoal e RDV (ver TipoCompra.despesaPessoal/rdv) nunca
+  // passam por aprovação, nem de nível 1 nem de nível 2 — independente de
+  // quem é o solicitante ou de qual faixa de alçada o valor cairia. RDV já
+  // vem aprovada pelo gestor em outro sistema. Por isso nem chega a checar
+  // pulaNivel1/alçada abaixo.
+  if (solicitacao.tipoCompra.despesaPessoal || solicitacao.tipoCompra.rdv) {
     return {
       status: StatusSolicitacao.APROVADO,
       evento: "aprovado",
-      detalhe: "Aprovação dispensada — despesa de pessoal (tipo de compra configurado assim).",
+      detalhe: solicitacao.tipoCompra.rdv
+        ? "Aprovação dispensada — RDV (já aprovada pelo gestor em outro sistema)."
+        : "Aprovação dispensada — despesa de pessoal (tipo de compra configurado assim).",
     };
   }
 
@@ -1117,11 +1164,11 @@ async function processarEnvioPagamento(
     throw new Error("Solicitação não encontrada.");
   }
 
-  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca coletou método
-  // de pagamento nem CNPJ/CPF do fornecedor na criação — só chega aqui pelo
-  // reenvio após uma recusa de pagamento, então exigi-los agora seria
-  // inconsistente com o que a criação pediu.
-  if (!solicitacao.tipoCompra.despesaPessoal) {
+  // Despesa de pessoal e RDV (ver TipoCompra.despesaPessoal/rdv) nunca
+  // coletaram método de pagamento nem CNPJ/CPF do fornecedor na criação —
+  // só chegam aqui pelo reenvio após uma recusa de pagamento, então exigi-
+  // los agora seria inconsistente com o que a criação pediu.
+  if (!solicitacao.tipoCompra.despesaPessoal && !solicitacao.tipoCompra.rdv) {
     if (!input.metodoPagamento || !Object.values(MetodoPagamento).includes(input.metodoPagamento)) {
       throw new Error("O método de pagamento é obrigatório.");
     }
@@ -1156,9 +1203,15 @@ async function processarEnvioPagamento(
     {
       status: StatusSolicitacao.AGUARDANDO_PAGAMENTO,
       notaFiscalUrls,
-      metodoPagamento: solicitacao.tipoCompra.despesaPessoal ? null : input.metodoPagamento,
+      metodoPagamento:
+        solicitacao.tipoCompra.despesaPessoal || solicitacao.tipoCompra.rdv
+          ? null
+          : input.metodoPagamento,
       dadosPagamento: dadosPagamentoTrim || null,
-      fornecedorDocumento: solicitacao.tipoCompra.despesaPessoal ? null : fornecedorDocumentoTrim,
+      fornecedorDocumento:
+        solicitacao.tipoCompra.despesaPessoal || solicitacao.tipoCompra.rdv
+          ? null
+          : fornecedorDocumentoTrim,
       // Só faz diferença vindo de PAGAMENTO_RECUSADO (de COMPRA_CONFIRMADA já
       // é null) — limpa o motivo antigo atomicamente junto com a transição,
       // mesmo padrão de processarEnvio limpando motivoRejeicao no reenvio.

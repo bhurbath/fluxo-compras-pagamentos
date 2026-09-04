@@ -41,6 +41,10 @@ export function PainelEdicaoReenvio({
             categoriaDespesaPessoalId: solicitacao.categoriaDespesaPessoalId,
             numeroPedido: solicitacao.numeroPedido,
             dataVencimento: solicitacao.dataVencimento?.toISOString().slice(0, 10) ?? null,
+            valorCartaoOnfly: solicitacao.valorCartaoOnfly?.toString() ?? null,
+            dataRdv: solicitacao.dataRdv?.toISOString().slice(0, 10) ?? null,
+            numeroRdv: solicitacao.numeroRdv,
+            possuiAdiantamento: solicitacao.possuiAdiantamento,
           }}
           {...listas}
         />

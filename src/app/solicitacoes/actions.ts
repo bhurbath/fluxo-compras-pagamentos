@@ -108,6 +108,30 @@ async function lerCamposDespesaPessoal(
   };
 }
 
+// RDV (ver TipoCompra.rdv) — prestação de contas de reembolso, campos
+// próprios e diferentes dos de despesa de pessoal. Mesmo padrão de "mantém
+// o anexo atual se nenhum arquivo novo vier" que lerCamposSemCompra usa.
+async function lerCamposRdv(
+  formData: FormData,
+  solicitacaoId: string,
+  notaFiscalUrlsAtuais: string[]
+): Promise<
+  Pick<
+    CriarSolicitacaoInput,
+    "valorCartaoOnfly" | "dataRdv" | "numeroRdv" | "possuiAdiantamento" | "notaFiscalUrls"
+  >
+> {
+  const campos = lerCampos(formData, ["valorCartaoOnfly", "dataRdv", "numeroRdv"]);
+  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  return {
+    valorCartaoOnfly: campos.valorCartaoOnfly || null,
+    dataRdv: campos.dataRdv || null,
+    numeroRdv: campos.numeroRdv || null,
+    possuiAdiantamento: formData.get("possuiAdiantamento") === "on",
+    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+  };
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
 // solicitação sempre herda o do solicitante — nunca é uma escolha dele. Qual
@@ -159,6 +183,12 @@ async function parseSolicitacaoForm(
     return {
       ...base,
       ...(await lerCamposDespesaPessoal(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
+    };
+  }
+  if (tipoCompra?.rdv) {
+    return {
+      ...base,
+      ...(await lerCamposRdv(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
     };
   }
 

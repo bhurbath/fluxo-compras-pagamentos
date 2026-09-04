@@ -64,13 +64,14 @@ async function criarDepartamento(
 
 async function criarTipoCompra(
   nome: string,
-  overrides: { despesaPessoal?: boolean; exigePrevisaoChegada?: boolean } = {}
+  overrides: { despesaPessoal?: boolean; exigePrevisaoChegada?: boolean; rdv?: boolean } = {}
 ) {
   return testDb.tipoCompra.create({
     data: {
       nome,
       despesaPessoal: overrides.despesaPessoal ?? false,
       exigePrevisaoChegada: overrides.exigePrevisaoChegada ?? false,
+      rdv: overrides.rdv ?? false,
     },
   });
 }
@@ -2994,6 +2995,178 @@ describe("workflow: despesa de pessoal", () => {
 
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.notaFiscalUrls).toEqual(["guia-nova.pdf"]);
+    expect(reenviada.metodoPagamento).toBeNull();
+    expect(reenviada.fornecedorDocumento).toBeNull();
+  });
+});
+
+// Prestação de contas de reembolso (ver TipoCompra.rdv) — já aprovada pelo
+// gestor em outro sistema, formulário próprio, direto para
+// AGUARDANDO_PAGAMENTO. Mesmo papel que criarSolicitacaoDespesaPessoalEnviada,
+// mas para esse tipo de compra.
+async function criarSolicitacaoRdvEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-rdv-${sufixo}`);
+  const tipo = await criarTipoCompra(`RDV ${sufixo}`, { rdv: true });
+  const empresa = await testDb.empresa.create({ data: { nome: `Empresa rdv ${sufixo}` } });
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Reembolso viagem SP",
+    valor: overrides.valor ?? "500",
+    empresaId: empresa.id,
+    valorCartaoOnfly: "120.50",
+    dataRdv: "2026-09-15",
+    numeroRdv: "RDV-001",
+    possuiAdiantamento: false,
+    notaFiscalUrls: ["rdv.pdf"],
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante, tipo };
+}
+
+describe("workflow: RDV", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige valor no cartão ONFLY, data, nº da RDV, o flag de adiantamento e ao menos um anexo", async () => {
+    const solicitante = await criarUsuario("rdv1");
+    const departamento = await criarDepartamento("rdv1");
+    const tipo = await criarTipoCompra("RDV rdv1", { rdv: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa rdv1" } });
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Reembolso",
+      valor: "500",
+      empresaId: empresa.id,
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow(/cartão ONFLY/);
+    await expect(
+      criarSolicitacao({ ...base, valorCartaoOnfly: "100" })
+    ).rejects.toThrow(/data da RDV/);
+    await expect(
+      criarSolicitacao({ ...base, valorCartaoOnfly: "100", dataRdv: "2026-09-15" })
+    ).rejects.toThrow(/nº da RDV/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        valorCartaoOnfly: "100",
+        dataRdv: "2026-09-15",
+        numeroRdv: "RDV-002",
+      })
+    ).rejects.toThrow(/adiantamento/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        valorCartaoOnfly: "100",
+        dataRdv: "2026-09-15",
+        numeroRdv: "RDV-002",
+        possuiAdiantamento: false,
+      })
+    ).rejects.toThrow(/anexo/);
+  });
+
+  it("não exige fornecedor nem os campos padrão (centro de custo, resultado, conta contábil, forma de pagamento)", async () => {
+    const solicitante = await criarUsuario("rdv2");
+    const departamento = await criarDepartamento("rdv2");
+    const tipo = await criarTipoCompra("RDV rdv2", { rdv: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa rdv2" } });
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Reembolso",
+      valor: "500",
+      empresaId: empresa.id,
+      valorCartaoOnfly: "100",
+      dataRdv: "2026-09-15",
+      numeroRdv: "RDV-003",
+      possuiAdiantamento: true,
+      notaFiscalUrls: ["rdv.pdf"],
+    });
+
+    expect(solicitacao.fornecedor).toBeNull();
+    expect(solicitacao.centroCustoId).toBeNull();
+    expect(solicitacao.centroResultadoId).toBeNull();
+    expect(solicitacao.contaContabilId).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+    expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.valorCartaoOnfly?.toString()).toBe("100");
+    expect(solicitacao.numeroRdv).toBe("RDV-003");
+    expect(solicitacao.possuiAdiantamento).toBe(true);
+  });
+
+  it("pula aprovação e vai direto para AGUARDANDO_PAGAMENTO, mesmo quando o solicitante não é o responsável e o valor exigiria nível 2", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao } = await criarSolicitacaoRdvEnviada("rdv3", { valor: "5000" });
+
+    expect(solicitacao.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(solicitacao.compradorId).toBeNull();
+  });
+
+  it("registra um histórico direto de aprovado para enviado_para_pagamento, sem nenhuma etapa de aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoRdvEnviada("rdv4");
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "aprovado",
+      "enviado_para_pagamento",
+    ]);
+  });
+
+  it("notifica o Financeiro ao ser enviada, nunca um responsável/diretor para aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await criarSolicitacaoRdvEnviada("rdv5");
+
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subject: expect.stringContaining("aguardando sua aprovação") })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRdvEnviada("rdv6");
+    const financeiro = await criarUsuario("fin-rdv6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Recibo ilegível");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrls: ["rdv-novo.pdf"],
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.notaFiscalUrls).toEqual(["rdv-novo.pdf"]);
     expect(reenviada.metodoPagamento).toBeNull();
     expect(reenviada.fornecedorDocumento).toBeNull();
   });

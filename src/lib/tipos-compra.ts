@@ -22,6 +22,10 @@ export type TipoCompraInput = {
   // solicitação desse tipo usa sempre esta empresa, sem o solicitante
   // escolher (ver workflow.ts). null/undefined remove a empresa fixa.
   empresaFixaId?: string | null;
+  // Ver comentário no schema (model TipoCompra) — muda o formulário para os
+  // campos de uma RDV e dispensa aprovação/compra, como despesaPessoal (ver
+  // workflow.ts).
+  rdv?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -45,6 +49,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
       dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
       empresaFixaId: input.empresaFixaId || null,
+      rdv: input.rdv ?? false,
     },
   });
 }
@@ -60,6 +65,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       exigePrevisaoChegada: input.exigePrevisaoChegada ?? false,
       dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
       empresaFixaId: input.empresaFixaId || null,
+      rdv: input.rdv ?? false,
     },
   });
 }

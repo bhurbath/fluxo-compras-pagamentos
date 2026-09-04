@@ -374,13 +374,15 @@ a {
     gap: 0.75rem;
   }
 
-  .despesa-pessoal-fields {
+  .despesa-pessoal-fields,
+  .rdv-fields {
     display: none;
     flex-direction: column;
     gap: 0.75rem;
   }
 
-  form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao {
+  form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campos-padrao {
     display: none;
   }
 
@@ -389,13 +391,22 @@ a {
     display: flex;
   }
 
+  /* RDV (ver TipoCompra.rdv) — prestação de contas de reembolso, mesmo
+     padrão de despesa de pessoal acima mas com seu próprio conjunto de
+     campos (.rdv-fields), e sem fornecedor (é reembolso ao próprio
+     solicitante, não uma compra de terceiro). */
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rdv-fields {
+    display: flex;
+  }
+
   /* Mesmo padrão, pra tipo de compra com TipoCompra.dispensaFornecedorForma
      (ex.: Mercado Livre — o link da compra já traz fornecedor e forma de
-     pagamento) e/ou TipoCompra.empresaFixaId (empresa sempre a mesma,
-     escolhida no cadastro do tipo, não pelo solicitante). Independentes
-     entre si: um tipo pode ter só um dos dois. */
+     pagamento), TipoCompra.rdv (nunca tem fornecedor) e/ou
+     TipoCompra.empresaFixaId (empresa sempre a mesma, escolhida no cadastro
+     do tipo, não pelo solicitante). Independentes entre si. */
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-fornecedor,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-forma-pagamento {
     display: none;

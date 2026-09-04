@@ -111,6 +111,30 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.dataVencimento.toLocaleDateString("pt-BR")}</dd>
           </div>
         )}
+        {solicitacao.dataRdv && (
+          <div>
+            <dt className="muted">Data da RDV</dt>
+            <dd>{formatarData(solicitacao.dataRdv)}</dd>
+          </div>
+        )}
+        {solicitacao.numeroRdv && (
+          <div>
+            <dt className="muted">Nº da RDV</dt>
+            <dd>{solicitacao.numeroRdv}</dd>
+          </div>
+        )}
+        {solicitacao.valorCartaoOnfly != null && (
+          <div>
+            <dt className="muted">Valor pago no cartão ONFLY</dt>
+            <dd>{formatarReais(solicitacao.valorCartaoOnfly)}</dd>
+          </div>
+        )}
+        {solicitacao.possuiAdiantamento != null && (
+          <div>
+            <dt className="muted">Possui adiantamento</dt>
+            <dd>{solicitacao.possuiAdiantamento ? "Sim" : "Não"}</dd>
+          </div>
+        )}
         {solicitacao.linkCompra && (
           <div>
             <dt className="muted">Link da compra</dt>

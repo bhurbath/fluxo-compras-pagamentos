@@ -8,6 +8,7 @@ type TipoCompraLista = {
   despesaPessoal: boolean;
   dispensaFornecedorForma: boolean;
   empresaFixaId: string | null;
+  rdv: boolean;
 };
 
 const FORMAS_PAGAMENTO = [
@@ -58,6 +59,10 @@ export function CamposSolicitacao({
     categoriaDespesaPessoalId?: string | null;
     numeroPedido?: string | null;
     dataVencimento?: string | null;
+    valorCartaoOnfly?: string | null;
+    dataRdv?: string | null;
+    numeroRdv?: string | null;
+    possuiAdiantamento?: boolean | null;
   };
   tiposCompra: TipoCompraLista[];
   centrosCusto: Lista[];
@@ -105,6 +110,7 @@ export function CamposSolicitacao({
               data-despesa-pessoal={t.despesaPessoal ? "true" : undefined}
               data-dispensa-fornecedor-forma={t.dispensaFornecedorForma ? "true" : undefined}
               data-empresa-fixa={t.empresaFixaId ? "true" : undefined}
+              data-rdv={t.rdv ? "true" : undefined}
             >
               {t.nome}
             </option>
@@ -339,6 +345,62 @@ export function CamposSolicitacao({
         <label className="field">
           Anexos (nota fiscal, guia, boleto — PDF, JPG ou PNG — pode selecionar mais de um
           arquivo)
+          <input
+            type="file"
+            name="notaFiscal"
+            accept=".pdf,.jpg,.jpeg,.png"
+            multiple
+            className="input-field"
+          />
+          {defaultValues?.temAnexo && (
+            <span className="muted-xs">
+              Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
+              substituí-los.
+            </span>
+          )}
+        </label>
+      </div>
+
+      <div className="rdv-fields">
+        <label className="field">
+          Valor pago no cartão ONFLY (R$)
+          <input
+            name="valorCartaoOnfly"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={defaultValues?.valorCartaoOnfly ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Data da RDV
+          <input
+            name="dataRdv"
+            type="date"
+            defaultValue={defaultValues?.dataRdv ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field">
+          Nº da RDV
+          <input
+            name="numeroRdv"
+            type="text"
+            defaultValue={defaultValues?.numeroRdv ?? ""}
+            className="input-field"
+          />
+        </label>
+        <label className="field-inline">
+          <input
+            name="possuiAdiantamento"
+            type="checkbox"
+            defaultChecked={defaultValues?.possuiAdiantamento ?? false}
+          />
+          Esta RDV possui adiantamento
+        </label>
+        <label className="field">
+          Anexo(s) da RDV (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
           <input
             type="file"
             name="notaFiscal"

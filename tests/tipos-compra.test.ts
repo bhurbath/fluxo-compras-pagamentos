@@ -129,6 +129,19 @@ describe("tipos de compra", () => {
     expect(atualizado.empresaFixaId).toBeNull();
   });
 
+  it("cria com rdv false por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão rdv" });
+    expect(tipo.rdv).toBe(false);
+  });
+
+  it("cria e atualiza rdv", async () => {
+    const tipo = await criarTipoCompra({ nome: "RDV teste", rdv: true });
+    expect(tipo.rdv).toBe(true);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, { nome: tipo.nome, rdv: false });
+    expect(atualizado.rdv).toBe(false);
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

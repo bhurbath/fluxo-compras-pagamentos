@@ -38,6 +38,7 @@ export default async function EditarTipoCompraPage({
           exigePrevisaoChegada: tipo.exigePrevisaoChegada,
           dispensaFornecedorForma: tipo.dispensaFornecedorForma,
           empresaFixaId: tipo.empresaFixaId,
+          rdv: tipo.rdv,
         }}
         empresas={empresas}
         action={atualizarTipoCompraAction.bind(null, id)}
