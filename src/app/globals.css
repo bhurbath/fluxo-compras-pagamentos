@@ -374,8 +374,7 @@ a {
     gap: 0.75rem;
   }
 
-  .despesa-pessoal-fields,
-  .rdv-fields {
+  .despesa-pessoal-fields {
     display: none;
     flex-direction: column;
     gap: 0.75rem;
@@ -388,14 +387,6 @@ a {
 
   form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked)
     .despesa-pessoal-fields {
-    display: flex;
-  }
-
-  /* RDV (ver TipoCompra.rdv) — prestação de contas de reembolso, mesmo
-     padrão de despesa de pessoal acima mas com seu próprio conjunto de
-     campos (.rdv-fields), e sem fornecedor (é reembolso ao próprio
-     solicitante, não uma compra de terceiro). */
-  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rdv-fields {
     display: flex;
   }
 
@@ -414,5 +405,98 @@ a {
 
   form:has(select[name="tipoCompraId"] option[data-empresa-fixa]:checked) .campo-empresa {
     display: none;
+  }
+
+  /* RDV (ver TipoCompra.rdv) — prestação de contas de reembolso. Diferente
+     de despesa de pessoal (um wrapper div só), os campos de RDV precisam se
+     intercalar com campos "padrão" (Tipo de compra, Empresa, Informações
+     complementares) numa ordem específica pedida pelo Financeiro — por isso
+     cada um é alternado (mostra/esconde) e reordenado (order, flexbox)
+     individualmente, como irmão direto no mesmo container flex (o <form> em
+     si), em vez de agrupados num wrapper. Descrição não é coletada nesse
+     tipo (o resto do sistema usa uma gerada a partir do nº da RDV — ver
+     mapCamposSolicitacao em workflow.ts). */
+  .campo-numero-rdv,
+  .campo-data-rdv,
+  .campo-valor-reembolsar,
+  .campo-valor-onfly,
+  .campo-anexo-rdv {
+    display: none;
+  }
+
+  .campo-possui-adiantamento {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-descricao {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-numero-rdv,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-data-rdv,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor-reembolsar,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor-onfly,
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-anexo-rdv {
+    display: flex;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-possui-adiantamento {
+    display: flex;
+  }
+
+  /* Rótulo do campo Valor muda pra "Valor Total" só em RDV (ele passa a
+     representar a soma de Valor a reembolsar + Valor pago no cartão ONFLY,
+     ver validarCriarSolicitacao) — troca de texto via CSS, sem JS, mesmo
+     espírito das outras alternâncias acima. */
+  .rotulo-valor-total {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-padrao {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-total {
+    display: inline;
+  }
+
+  /* Ordem visual pedida pelo Financeiro pra RDV: Tipo de compra, Empresa,
+     Nº da RDV, Data da RDV, Valor total, Valor a reembolsar, Valor pago no
+     cartão ONFLY, Informações complementares, Possui adiantamento, Anexo.
+     Valores negativos (não 1..10) de propósito: assim todo campo sem order
+     explícito (o próprio .campos-padrao/.despesa-pessoal-fields — já
+     escondidos — e a linha de botões, fora de CamposSolicitacao, renderizada
+     pela página) mantém seu order:0 padrão e continua depois destes, sem
+     precisar tocar em cada página que usa este componente. */
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-tipo-compra {
+    order: -10;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-empresa {
+    order: -9;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-numero-rdv {
+    order: -8;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-data-rdv {
+    order: -7;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor {
+    order: -6;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor-reembolsar {
+    order: -5;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor-onfly {
+    order: -4;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked)
+    .campo-informacoes-complementares {
+    order: -3;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-possui-adiantamento {
+    order: -2;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-anexo-rdv {
+    order: -1;
   }
 }

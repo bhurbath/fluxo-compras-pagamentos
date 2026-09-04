@@ -3017,14 +3017,20 @@ async function criarSolicitacaoRdvEnviada(
     : await criarUsuario(`sol-rdv-${sufixo}`);
   const tipo = await criarTipoCompra(`RDV ${sufixo}`, { rdv: true });
   const empresa = await testDb.empresa.create({ data: { nome: `Empresa rdv ${sufixo}` } });
+  const valorCartaoOnfly = 120.5;
+  const valor = Number(overrides.valor ?? "500");
   const rascunho = await criarSolicitacao({
     solicitanteId: solicitante.id,
     departamentoId: departamento.id,
     tipoCompraId: tipo.id,
-    descricao: "Reembolso viagem SP",
-    valor: overrides.valor ?? "500",
+    // Ignorada para RDV (ver mapCamposSolicitacao) — o campo nem é
+    // obrigatório nesse tipo, mas CriarSolicitacaoInput.descricao continua
+    // não-opcional no tipo.
+    descricao: "",
+    valor: valor.toString(),
     empresaId: empresa.id,
-    valorCartaoOnfly: "120.50",
+    valorReembolsar: (valor - valorCartaoOnfly).toFixed(2),
+    valorCartaoOnfly: valorCartaoOnfly.toString(),
     dataRdv: "2026-09-15",
     numeroRdv: "RDV-001",
     possuiAdiantamento: false,
@@ -3043,7 +3049,7 @@ describe("workflow: RDV", () => {
     setEmailSender(fake);
   });
 
-  it("exige valor no cartão ONFLY, data, nº da RDV, o flag de adiantamento e ao menos um anexo", async () => {
+  it("exige valor a reembolsar, valor no cartão ONFLY, data, nº da RDV, o flag de adiantamento e ao menos um anexo", async () => {
     const solicitante = await criarUsuario("rdv1");
     const departamento = await criarDepartamento("rdv1");
     const tipo = await criarTipoCompra("RDV rdv1", { rdv: true });
@@ -3057,16 +3063,25 @@ describe("workflow: RDV", () => {
       empresaId: empresa.id,
     };
 
-    await expect(criarSolicitacao(base)).rejects.toThrow(/cartão ONFLY/);
+    await expect(criarSolicitacao(base)).rejects.toThrow(/reembolsar/);
     await expect(
-      criarSolicitacao({ ...base, valorCartaoOnfly: "100" })
+      criarSolicitacao({ ...base, valorReembolsar: "400" })
+    ).rejects.toThrow(/cartão ONFLY/);
+    await expect(
+      criarSolicitacao({ ...base, valorReembolsar: "400", valorCartaoOnfly: "100" })
     ).rejects.toThrow(/data da RDV/);
     await expect(
-      criarSolicitacao({ ...base, valorCartaoOnfly: "100", dataRdv: "2026-09-15" })
+      criarSolicitacao({
+        ...base,
+        valorReembolsar: "400",
+        valorCartaoOnfly: "100",
+        dataRdv: "2026-09-15",
+      })
     ).rejects.toThrow(/nº da RDV/);
     await expect(
       criarSolicitacao({
         ...base,
+        valorReembolsar: "400",
         valorCartaoOnfly: "100",
         dataRdv: "2026-09-15",
         numeroRdv: "RDV-002",
@@ -3075,12 +3090,37 @@ describe("workflow: RDV", () => {
     await expect(
       criarSolicitacao({
         ...base,
+        valorReembolsar: "400",
         valorCartaoOnfly: "100",
         dataRdv: "2026-09-15",
         numeroRdv: "RDV-002",
         possuiAdiantamento: false,
       })
     ).rejects.toThrow(/anexo/);
+  });
+
+  it("exige que o valor total seja igual à soma do valor a reembolsar com o valor pago no cartão ONFLY", async () => {
+    const solicitante = await criarUsuario("rdv1b");
+    const departamento = await criarDepartamento("rdv1b");
+    const tipo = await criarTipoCompra("RDV rdv1b", { rdv: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa rdv1b" } });
+
+    await expect(
+      criarSolicitacao({
+        solicitanteId: solicitante.id,
+        departamentoId: departamento.id,
+        tipoCompraId: tipo.id,
+        descricao: "Reembolso",
+        valor: "500",
+        empresaId: empresa.id,
+        valorReembolsar: "400",
+        valorCartaoOnfly: "150",
+        dataRdv: "2026-09-15",
+        numeroRdv: "RDV-002",
+        possuiAdiantamento: false,
+        notaFiscalUrls: ["rdv.pdf"],
+      })
+    ).rejects.toThrow(/soma/);
   });
 
   it("não exige fornecedor nem os campos padrão (centro de custo, resultado, conta contábil, forma de pagamento)", async () => {
@@ -3096,6 +3136,7 @@ describe("workflow: RDV", () => {
       descricao: "Reembolso",
       valor: "500",
       empresaId: empresa.id,
+      valorReembolsar: "400",
       valorCartaoOnfly: "100",
       dataRdv: "2026-09-15",
       numeroRdv: "RDV-003",
@@ -3109,9 +3150,11 @@ describe("workflow: RDV", () => {
     expect(solicitacao.contaContabilId).toBeNull();
     expect(solicitacao.formaPagamento).toBeNull();
     expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.valorReembolsar?.toString()).toBe("400");
     expect(solicitacao.valorCartaoOnfly?.toString()).toBe("100");
     expect(solicitacao.numeroRdv).toBe("RDV-003");
     expect(solicitacao.possuiAdiantamento).toBe(true);
+    expect(solicitacao.descricao).toBe("Reembolso RDV nº RDV-003");
   });
 
   it("pula aprovação e vai direto para AGUARDANDO_PAGAMENTO, mesmo quando o solicitante não é o responsável e o valor exigiria nível 2", async () => {

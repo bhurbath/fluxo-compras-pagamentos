@@ -69,8 +69,12 @@ export type CriarSolicitacaoInput = {
   categoriaDespesaPessoalId?: string | null;
   numeroPedido?: string | null;
   dataVencimento?: string | null;
-  // RDV (ver TipoCompra.rdv): todos obrigatórios. valor (acima) é o valor a
-  // reembolsar.
+  // RDV (ver TipoCompra.rdv): todos obrigatórios. valor (acima) é o valor
+  // total, sempre igual a valorReembolsar + valorCartaoOnfly — checado em
+  // validarCriarSolicitacao. descricao não é coletada no formulário para
+  // esse tipo (ver CamposSolicitacao) — mapCamposSolicitacao gera uma a
+  // partir do nº da RDV.
+  valorReembolsar?: string | null;
   valorCartaoOnfly?: string | null;
   dataRdv?: string | null;
   numeroRdv?: string | null;
@@ -106,7 +110,10 @@ function validarCriarSolicitacao(
     rdv: boolean;
   }
 ): void {
-  if (!input.descricao.trim()) {
+  // RDV não coleta descrição no formulário (ver CamposSolicitacao) —
+  // mapCamposSolicitacao gera uma a partir do nº da RDV, então não faz
+  // sentido exigi-la aqui.
+  if (!tipoCompra.rdv && !input.descricao.trim()) {
     throw new Error("A descrição é obrigatória.");
   }
   const valor = paraDecimal(input.valor, "O valor");
@@ -149,11 +156,25 @@ function validarCriarSolicitacao(
   }
 
   if (tipoCompra.rdv) {
+    if (!input.valorReembolsar?.trim()) {
+      throw new Error("O valor a reembolsar é obrigatório.");
+    }
+    const valorReembolsar = paraDecimal(input.valorReembolsar, "O valor a reembolsar");
+    if (valorReembolsar.lessThan(0)) {
+      throw new Error("O valor a reembolsar não pode ser negativo.");
+    }
     if (!input.valorCartaoOnfly?.trim()) {
       throw new Error("O valor pago no cartão ONFLY é obrigatório.");
     }
-    if (paraDecimal(input.valorCartaoOnfly, "O valor pago no cartão ONFLY").lessThan(0)) {
+    const valorCartaoOnfly = paraDecimal(input.valorCartaoOnfly, "O valor pago no cartão ONFLY");
+    if (valorCartaoOnfly.lessThan(0)) {
       throw new Error("O valor pago no cartão ONFLY não pode ser negativo.");
+    }
+    if (!valor.equals(valorReembolsar.plus(valorCartaoOnfly))) {
+      throw new Error(
+        "O valor total precisa ser igual à soma do valor a reembolsar com o valor pago no " +
+          "cartão ONFLY."
+      );
     }
     if (!input.dataRdv?.trim()) {
       throw new Error("A data da RDV é obrigatória.");
@@ -287,7 +308,10 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
   return {
     departamentoId: input.departamentoId,
     tipoCompraId: input.tipoCompraId,
-    descricao: input.descricao.trim(),
+    // RDV não coleta descrição no formulário (ver CamposSolicitacao) — o
+    // resto do sistema (e-mails, listas) ainda usa esse campo como o
+    // "título" da solicitação, então gera um a partir do nº da RDV.
+    descricao: rdv ? `Reembolso RDV nº ${input.numeroRdv?.trim()}` : input.descricao.trim(),
     valor: input.valor,
     fornecedor: dispensaFornecedorForma || rdv ? null : input.fornecedor?.trim() || null,
     formaPagamento: semAprovacaoNemCompra || dispensaFornecedorForma ? null : input.formaPagamento,
@@ -307,6 +331,7 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     categoriaDespesaPessoalId: despesaPessoal ? input.categoriaDespesaPessoalId?.trim() || null : null,
     numeroPedido: despesaPessoal ? input.numeroPedido?.trim() || null : null,
     dataVencimento: despesaPessoal && input.dataVencimento ? new Date(input.dataVencimento) : null,
+    valorReembolsar: rdv ? input.valorReembolsar?.trim() || null : null,
     valorCartaoOnfly: rdv ? input.valorCartaoOnfly?.trim() || null : null,
     dataRdv: rdv && input.dataRdv ? new Date(input.dataRdv) : null,
     numeroRdv: rdv ? input.numeroRdv?.trim() || null : null,

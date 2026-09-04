@@ -118,12 +118,18 @@ async function lerCamposRdv(
 ): Promise<
   Pick<
     CriarSolicitacaoInput,
-    "valorCartaoOnfly" | "dataRdv" | "numeroRdv" | "possuiAdiantamento" | "notaFiscalUrls"
+    | "valorReembolsar"
+    | "valorCartaoOnfly"
+    | "dataRdv"
+    | "numeroRdv"
+    | "possuiAdiantamento"
+    | "notaFiscalUrls"
   >
 > {
-  const campos = lerCampos(formData, ["valorCartaoOnfly", "dataRdv", "numeroRdv"]);
+  const campos = lerCampos(formData, ["valorReembolsar", "valorCartaoOnfly", "dataRdv", "numeroRdv"]);
   const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
   return {
+    valorReembolsar: campos.valorReembolsar || null,
     valorCartaoOnfly: campos.valorCartaoOnfly || null,
     dataRdv: campos.dataRdv || null,
     numeroRdv: campos.numeroRdv || null,
@@ -157,7 +163,18 @@ async function parseSolicitacaoForm(
   }
 
   const campos = lerCampos(formData, ["descricao", "valor", "tipoCompraId"]);
-  exigirTodos(campos, "Descrição, valor e tipo de compra são obrigatórios.");
+  exigirTodos(
+    { valor: campos.valor, tipoCompraId: campos.tipoCompraId },
+    "Valor e tipo de compra são obrigatórios."
+  );
+
+  const tipoCompra = await obterTipoCompra(campos.tipoCompraId);
+
+  // RDV não coleta descrição no formulário (ver CamposSolicitacao) — o
+  // workflow gera uma a partir do nº da RDV (ver mapCamposSolicitacao).
+  if (!tipoCompra?.rdv) {
+    exigirTodos({ descricao: campos.descricao }, "A descrição é obrigatória.");
+  }
 
   // Fornecedor e empresa não são exigidos aqui: dependem do tipo de compra
   // (TipoCompra.dispensaFornecedorForma/empresaFixaId — ex.: Mercado
@@ -178,7 +195,6 @@ async function parseSolicitacaoForm(
     informacoesComplementares: opcionais.informacoesComplementares || null,
   };
 
-  const tipoCompra = await obterTipoCompra(campos.tipoCompraId);
   if (tipoCompra?.despesaPessoal) {
     return {
       ...base,

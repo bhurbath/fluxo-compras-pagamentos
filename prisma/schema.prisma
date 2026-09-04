@@ -322,9 +322,11 @@ model Solicitacao {
   dataVencimento            DateTime?
 
   // RDV (ver TipoCompra.rdv): prestação de contas de reembolso já aprovada
-  // pelo gestor em outro sistema. valor (campo já existente acima) é usado
-  // como o valor a reembolsar; nenhum dos campos abaixo existe fora desse
+  // pelo gestor em outro sistema. valor (campo já existente acima) é o valor
+  // total da RDV, sempre igual a valorReembolsar + valorCartaoOnfly (checado
+  // em validarCriarSolicitacao); nenhum dos campos abaixo existe fora desse
   // tipo de solicitação.
+  valorReembolsar    Decimal? @db.Decimal(12, 2)
   valorCartaoOnfly   Decimal? @db.Decimal(12, 2)
   dataRdv            DateTime?
   numeroRdv          String?

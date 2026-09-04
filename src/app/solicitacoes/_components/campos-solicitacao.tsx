@@ -29,6 +29,14 @@ const FORMAS_PAGAMENTO = [
 // <option> de tipoCompraId carrega data-despesa-pessoal, e o seletor
 // `:has()` no CSS troca os campos "padrão" pelos de despesa de pessoal
 // conforme a opção selecionada no momento.
+//
+// A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nº da RDV,
+// Data da RDV, Valor total, Valor a reembolsar, Valor pago no cartão ONFLY,
+// Informações complementares) é bem diferente da ordem "padrão" — em vez de
+// duplicar campos, cada um deles recebe uma classe própria e a troca de
+// posição é feita via `order` (flexbox) só quando RDV está selecionado, ver
+// globals.css. Por isso todos esses campos precisam ser irmãos diretos
+// (sem wrapper div), diferente de .campos-padrao/.despesa-pessoal-fields.
 export function CamposSolicitacao({
   defaultValues,
   tiposCompra,
@@ -59,6 +67,7 @@ export function CamposSolicitacao({
     categoriaDespesaPessoalId?: string | null;
     numeroPedido?: string | null;
     dataVencimento?: string | null;
+    valorReembolsar?: string | null;
     valorCartaoOnfly?: string | null;
     dataRdv?: string | null;
     numeroRdv?: string | null;
@@ -73,17 +82,17 @@ export function CamposSolicitacao({
 }) {
   return (
     <>
-      <label className="field">
+      <label className="field campo-descricao">
         Descrição
         <textarea
           name="descricao"
-          required
           defaultValue={defaultValues?.descricao}
           className="input-field"
         />
       </label>
-      <label className="field">
-        Valor (R$)
+      <label className="field campo-valor">
+        <span className="rotulo-valor-padrao">Valor (R$)</span>
+        <span className="rotulo-valor-total">Valor Total (R$)</span>
         <input
           name="valor"
           type="number"
@@ -94,7 +103,7 @@ export function CamposSolicitacao({
           className="input-field"
         />
       </label>
-      <label className="field">
+      <label className="field campo-tipo-compra">
         Tipo de compra
         <select
           name="tipoCompraId"
@@ -141,13 +150,77 @@ export function CamposSolicitacao({
           ))}
         </select>
       </label>
-      <label className="field">
+      <label className="field campo-numero-rdv">
+        Nº da RDV
+        <input
+          name="numeroRdv"
+          type="text"
+          defaultValue={defaultValues?.numeroRdv ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-data-rdv">
+        Data da RDV
+        <input
+          name="dataRdv"
+          type="date"
+          defaultValue={defaultValues?.dataRdv ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-valor-reembolsar">
+        Valor a reembolsar (R$)
+        <input
+          name="valorReembolsar"
+          type="number"
+          step="0.01"
+          min="0"
+          defaultValue={defaultValues?.valorReembolsar ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-valor-onfly">
+        Valor pago no Cartão ONFLY (R$)
+        <input
+          name="valorCartaoOnfly"
+          type="number"
+          step="0.01"
+          min="0"
+          defaultValue={defaultValues?.valorCartaoOnfly ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-informacoes-complementares">
         Informações complementares (opcional)
         <textarea
           name="informacoesComplementares"
           defaultValue={defaultValues?.informacoesComplementares ?? ""}
           className="input-field"
         />
+      </label>
+      <label className="field-inline campo-possui-adiantamento">
+        <input
+          name="possuiAdiantamento"
+          type="checkbox"
+          defaultChecked={defaultValues?.possuiAdiantamento ?? false}
+        />
+        Esta RDV possui adiantamento
+      </label>
+      <label className="field campo-anexo-rdv">
+        Anexo(s) da RDV (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
+        <input
+          type="file"
+          name="notaFiscal"
+          accept=".pdf,.jpg,.jpeg,.png"
+          multiple
+          className="input-field"
+        />
+        {defaultValues?.temAnexo && (
+          <span className="muted-xs">
+            Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
+            substituí-los.
+          </span>
+        )}
       </label>
 
       <div className="campos-padrao">
@@ -345,62 +418,6 @@ export function CamposSolicitacao({
         <label className="field">
           Anexos (nota fiscal, guia, boleto — PDF, JPG ou PNG — pode selecionar mais de um
           arquivo)
-          <input
-            type="file"
-            name="notaFiscal"
-            accept=".pdf,.jpg,.jpeg,.png"
-            multiple
-            className="input-field"
-          />
-          {defaultValues?.temAnexo && (
-            <span className="muted-xs">
-              Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
-              substituí-los.
-            </span>
-          )}
-        </label>
-      </div>
-
-      <div className="rdv-fields">
-        <label className="field">
-          Valor pago no cartão ONFLY (R$)
-          <input
-            name="valorCartaoOnfly"
-            type="number"
-            step="0.01"
-            min="0"
-            defaultValue={defaultValues?.valorCartaoOnfly ?? ""}
-            className="input-field"
-          />
-        </label>
-        <label className="field">
-          Data da RDV
-          <input
-            name="dataRdv"
-            type="date"
-            defaultValue={defaultValues?.dataRdv ?? ""}
-            className="input-field"
-          />
-        </label>
-        <label className="field">
-          Nº da RDV
-          <input
-            name="numeroRdv"
-            type="text"
-            defaultValue={defaultValues?.numeroRdv ?? ""}
-            className="input-field"
-          />
-        </label>
-        <label className="field-inline">
-          <input
-            name="possuiAdiantamento"
-            type="checkbox"
-            defaultChecked={defaultValues?.possuiAdiantamento ?? false}
-          />
-          Esta RDV possui adiantamento
-        </label>
-        <label className="field">
-          Anexo(s) da RDV (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
           <input
             type="file"
             name="notaFiscal"

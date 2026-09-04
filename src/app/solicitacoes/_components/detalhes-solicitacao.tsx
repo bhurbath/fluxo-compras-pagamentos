@@ -45,9 +45,15 @@ export function DetalhesSolicitacao({
           <dd>{solicitacao.descricao}</dd>
         </div>
         <div>
-          <dt className="muted">Valor</dt>
+          <dt className="muted">{solicitacao.tipoCompra.rdv ? "Valor total" : "Valor"}</dt>
           <dd>{formatarReais(solicitacao.valor)}</dd>
         </div>
+        {solicitacao.valorReembolsar != null && (
+          <div>
+            <dt className="muted">Valor a reembolsar</dt>
+            <dd>{formatarReais(solicitacao.valorReembolsar)}</dd>
+          </div>
+        )}
         <div>
           <dt className="muted">Departamento</dt>
           <dd>{solicitacao.departamento.nome}</dd>
@@ -125,7 +131,7 @@ export function DetalhesSolicitacao({
         )}
         {solicitacao.valorCartaoOnfly != null && (
           <div>
-            <dt className="muted">Valor pago no cartão ONFLY</dt>
+            <dt className="muted">Valor pago no Cartão ONFLY</dt>
             <dd>{formatarReais(solicitacao.valorCartaoOnfly)}</dd>
           </div>
         )}
