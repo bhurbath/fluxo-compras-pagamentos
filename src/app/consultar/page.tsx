@@ -36,6 +36,7 @@ export default async function ConsultarPage({
           status: statusInvalido ? undefined : (statusParam as StatusSolicitacao | undefined),
           de: de ?? undefined,
           ate: ate ?? undefined,
+          ordenacao: "desc",
         }),
   ]);
 

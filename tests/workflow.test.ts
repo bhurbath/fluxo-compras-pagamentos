@@ -2567,6 +2567,26 @@ describe("workflow: listarSolicitacoesParaExportar", () => {
     expect(exportada.historico.length).toBeGreaterThan(0);
     expect(exportada.historico[0]?.ator?.id).toBe(solicitante.id);
   });
+
+  it("ordena por data de criação crescente por padrão", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: primeira } = await criarSolicitacaoEnviada("ex7a");
+    const { solicitacao: segunda } = await criarSolicitacaoEnviada("ex7b");
+
+    const exportadas = await listarSolicitacoesParaExportar({});
+
+    expect(exportadas.map((s) => s.id)).toEqual([primeira.id, segunda.id]);
+  });
+
+  it("ordena por data de criação decrescente quando ordenacao é desc (tela de consulta)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: primeira } = await criarSolicitacaoEnviada("ex8a");
+    const { solicitacao: segunda } = await criarSolicitacaoEnviada("ex8b");
+
+    const exportadas = await listarSolicitacoesParaExportar({ ordenacao: "desc" });
+
+    expect(exportadas.map((s) => s.id)).toEqual([segunda.id, primeira.id]);
+  });
 });
 
 // Encargos, taxas e outras despesas sem etapa de compra (ver DNI 0007:

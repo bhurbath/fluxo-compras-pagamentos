@@ -1540,6 +1540,10 @@ export type FiltrosExportacao = {
   status?: StatusSolicitacao;
   de?: Date;
   ate?: Date;
+  // A tela de consulta (/consultar) quer as mais recentes primeiro; o CSV de
+  // exportação mantém a ordem cronológica ascendente (default, ver comentário
+  // abaixo) — cada chamador decide a sua.
+  ordenacao?: "asc" | "desc";
 };
 
 // Para o relatório CSV do Financeiro (ticket 13) — não é uma transição, só
@@ -1566,6 +1570,6 @@ export async function listarSolicitacoesParaExportar(filtros: FiltrosExportacao)
       comprador: true,
       historico: { include: { ator: true }, orderBy: { criadoEm: "asc" } },
     },
-    orderBy: { criadoEm: "asc" },
+    orderBy: { criadoEm: filtros.ordenacao ?? "asc" },
   });
 }
