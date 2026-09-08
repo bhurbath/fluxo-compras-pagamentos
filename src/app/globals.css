@@ -281,6 +281,87 @@ a {
     vertical-align: middle;
   }
 
+  /* TabelaSolicitacoes ("Pendentes de mim"/"Minhas solicitações") manda os
+     mesmos itens em dois markups — a tabela acima para telas largas, e um
+     cartão por solicitação aqui para telas estreitas, onde uma tabela de 5+
+     colunas fica espremida. Puro CSS, sem JS, mesmo padrão das outras
+     alternâncias deste arquivo: os dois já nascem no HTML, o media query
+     decide qual mostrar. */
+  .tabela-solicitacoes-desktop {
+    display: block;
+  }
+
+  .tabela-solicitacoes-cards {
+    display: none;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  @media (max-width: 40rem) {
+    .tabela-solicitacoes-desktop {
+      display: none;
+    }
+    .tabela-solicitacoes-cards {
+      display: flex;
+    }
+  }
+
+  .card-solicitacao {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .card-solicitacao-topo {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .card-solicitacao-descricao {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--ink);
+    line-height: 1.35;
+  }
+
+  .card-solicitacao-valor {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--ink);
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .card-solicitacao-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+  }
+  .card-solicitacao-meta dt {
+    display: inline;
+    font-weight: 500;
+    color: var(--ink-faint);
+  }
+  .card-solicitacao-meta dd {
+    display: inline;
+    margin: 0 0 0 0.25rem;
+  }
+
+  .card-solicitacao-rodape {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 0.1rem;
+  }
+
   .admin-nav {
     display: flex;
     flex-wrap: wrap;
