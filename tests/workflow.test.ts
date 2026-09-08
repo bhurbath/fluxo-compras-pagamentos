@@ -64,7 +64,12 @@ async function criarDepartamento(
 
 async function criarTipoCompra(
   nome: string,
-  overrides: { despesaPessoal?: boolean; exigePrevisaoChegada?: boolean; rdv?: boolean } = {}
+  overrides: {
+    despesaPessoal?: boolean;
+    exigePrevisaoChegada?: boolean;
+    rdv?: boolean;
+    caixaInterno?: boolean;
+  } = {}
 ) {
   return testDb.tipoCompra.create({
     data: {
@@ -72,6 +77,7 @@ async function criarTipoCompra(
       despesaPessoal: overrides.despesaPessoal ?? false,
       exigePrevisaoChegada: overrides.exigePrevisaoChegada ?? false,
       rdv: overrides.rdv ?? false,
+      caixaInterno: overrides.caixaInterno ?? false,
     },
   });
 }
@@ -3210,6 +3216,183 @@ describe("workflow: RDV", () => {
 
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.notaFiscalUrls).toEqual(["rdv-novo.pdf"]);
+    expect(reenviada.metodoPagamento).toBeNull();
+    expect(reenviada.fornecedorDocumento).toBeNull();
+  });
+});
+
+// Prestação de contas de despesa já paga pelo caixa interno (ver
+// TipoCompra.caixaInterno) — mesmo desvio de aprovação/compra que RDV, mas
+// mantém centro de custo/resultado/conta contábil e não exige comprovante ao
+// registrar o pagamento. Mesmo papel que criarSolicitacaoRdvEnviada, mas
+// para esse tipo de compra.
+async function criarSolicitacaoCaixaInternoEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-ci-${sufixo}`);
+  const tipo = await criarTipoCompra(`Caixa Interno ${sufixo}`, { caixaInterno: true });
+  const [centroCusto, centroResultado, contaContabil, empresa] = await Promise.all([
+    testDb.centroCusto.create({ data: { nome: `Centro de custo ci ${sufixo}` } }),
+    testDb.centroResultado.create({ data: { nome: `Centro de resultado ci ${sufixo}` } }),
+    testDb.contaContabil.create({ data: { nome: `Conta contábil ci ${sufixo}` } }),
+    testDb.empresa.create({ data: { nome: `Empresa ci ${sufixo}` } }),
+  ]);
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Despesa do caixa interno",
+    valor: overrides.valor ?? "500",
+    empresaId: empresa.id,
+    centroCustoId: centroCusto.id,
+    centroResultadoId: centroResultado.id,
+    contaContabilId: contaContabil.id,
+    dataDespesa: "2026-09-15",
+    notaFiscalUrls: ["ci.pdf"],
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante, tipo };
+}
+
+describe("workflow: Caixa Interno", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige data da despesa, centro de custo, centro de resultado, conta contábil e ao menos um anexo", async () => {
+    const solicitante = await criarUsuario("ci1");
+    const departamento = await criarDepartamento("ci1");
+    const tipo = await criarTipoCompra("Caixa Interno ci1", { caixaInterno: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa ci1" } });
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Despesa",
+      valor: "500",
+      empresaId: empresa.id,
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow(/data da despesa/);
+
+    const [centroCusto, centroResultado, contaContabil] = await Promise.all([
+      testDb.centroCusto.create({ data: { nome: "Centro de custo ci1" } }),
+      testDb.centroResultado.create({ data: { nome: "Centro de resultado ci1" } }),
+      testDb.contaContabil.create({ data: { nome: "Conta contábil ci1" } }),
+    ]);
+
+    await expect(
+      criarSolicitacao({ ...base, dataDespesa: "2026-09-15" })
+    ).rejects.toThrow(/centro de custo/);
+    await expect(
+      criarSolicitacao({ ...base, dataDespesa: "2026-09-15", centroCustoId: centroCusto.id })
+    ).rejects.toThrow(/centro de resultado/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        dataDespesa: "2026-09-15",
+        centroCustoId: centroCusto.id,
+        centroResultadoId: centroResultado.id,
+      })
+    ).rejects.toThrow(/conta contábil/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        dataDespesa: "2026-09-15",
+        centroCustoId: centroCusto.id,
+        centroResultadoId: centroResultado.id,
+        contaContabilId: contaContabil.id,
+      })
+    ).rejects.toThrow(/anexo/);
+  });
+
+  it("não exige fornecedor nem forma de pagamento, mas mantém centro de custo/resultado/conta contábil", async () => {
+    const { solicitacao } = await criarSolicitacaoCaixaInternoEnviada("ci2");
+
+    expect(solicitacao.fornecedor).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+    expect(solicitacao.centroCustoId).not.toBeNull();
+    expect(solicitacao.centroResultadoId).not.toBeNull();
+    expect(solicitacao.contaContabilId).not.toBeNull();
+    expect(solicitacao.semCompra).toBe(true);
+  });
+
+  it("pula aprovação e vai direto para AGUARDANDO_PAGAMENTO, mesmo quando o solicitante não é o responsável e o valor exigiria nível 2", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao } = await criarSolicitacaoCaixaInternoEnviada("ci3", { valor: "5000" });
+
+    expect(solicitacao.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(solicitacao.compradorId).toBeNull();
+  });
+
+  it("registra um histórico direto de aprovado para enviado_para_pagamento, sem nenhuma etapa de aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoCaixaInternoEnviada("ci4");
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "aprovado",
+      "enviado_para_pagamento",
+    ]);
+  });
+
+  it("notifica o Financeiro ao ser enviada, nunca um responsável/diretor para aprovação", async () => {
+    await criarFaixa("0", null, false);
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await criarSolicitacaoCaixaInternoEnviada("ci5");
+
+    expect(enviarSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ subject: expect.stringContaining("aguardando sua aprovação") })
+    );
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoCaixaInternoEnviada("ci6");
+    const financeiro = await criarUsuario("fin-ci6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBeNull();
+  });
+
+  it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, solicitante } = await criarSolicitacaoCaixaInternoEnviada("ci7");
+    const financeiro = await criarUsuario("fin-ci7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Anexo ilegível");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrls: ["ci-novo.pdf"],
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.notaFiscalUrls).toEqual(["ci-novo.pdf"]);
     expect(reenviada.metodoPagamento).toBeNull();
     expect(reenviada.fornecedorDocumento).toBeNull();
   });

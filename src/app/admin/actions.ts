@@ -270,6 +270,7 @@ function parseTipoCompraForm(formData: FormData): TipoCompraInput {
     dispensaFornecedorForma: formData.get("dispensaFornecedorForma") === "on",
     empresaFixaId: String(formData.get("empresaFixaId") ?? "").trim() || null,
     rdv: formData.get("rdv") === "on",
+    caixaInterno: formData.get("caixaInterno") === "on",
   };
 }
 

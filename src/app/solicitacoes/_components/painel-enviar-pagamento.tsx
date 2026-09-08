@@ -4,16 +4,17 @@ export function PainelEnviarPagamento({
   solicitacaoId,
   action,
   titulo = "Anexar nota fiscal e enviar para pagamento",
-  // Despesa de pessoal (ver TipoCompra.despesaPessoal) nunca coletou método
-  // de pagamento nem CNPJ/CPF do fornecedor na criação — pedir isso de novo
-  // aqui, só porque o pagamento foi recusado, seria inconsistente com o que
-  // a criação já pediu (ver processarEnvioPagamento em src/lib/workflow.ts).
-  despesaPessoal = false,
+  // Despesa de pessoal, RDV e Caixa Interno (ver TipoCompra) nunca
+  // coletaram método de pagamento nem CNPJ/CPF do fornecedor na criação —
+  // pedir isso de novo aqui, só porque o pagamento foi recusado, seria
+  // inconsistente com o que a criação já pediu (ver semEtapaDeCompra em
+  // src/lib/workflow.ts).
+  semEtapaDeCompra = false,
 }: {
   solicitacaoId: string;
   action: (id: string, formData: FormData) => Promise<void>;
   titulo?: string;
-  despesaPessoal?: boolean;
+  semEtapaDeCompra?: boolean;
 }) {
   return (
     <div className="card-block">
@@ -38,7 +39,7 @@ export function PainelEnviarPagamento({
             className="input-field"
           />
         </label>
-        {!despesaPessoal && (
+        {!semEtapaDeCompra && (
           <>
             <label className="field">
               CNPJ/CPF do fornecedor
@@ -68,10 +69,10 @@ export function PainelEnviarPagamento({
           </>
         )}
         <label className="field">
-          Dados de pagamento (chave PIX, dados bancários, etc.){despesaPessoal && " (opcional)"}
+          Dados de pagamento (chave PIX, dados bancários, etc.){semEtapaDeCompra && " (opcional)"}
           <textarea
             name="dadosPagamento"
-            required={!despesaPessoal}
+            required={!semEtapaDeCompra}
             className="input-field"
           />
         </label>

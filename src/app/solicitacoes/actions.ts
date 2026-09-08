@@ -156,6 +156,41 @@ async function lerCamposRdv(
   };
 }
 
+// Caixa Interno (ver TipoCompra.caixaInterno) — prestação de contas de
+// despesa já paga pelo caixa interno. Diferente de despesaPessoal/rdv,
+// continua coletando centro de custo/resultado/conta contábil — mas sob
+// name próprio (...CaixaInterno), já que os campos "padrão" (dentro de
+// .campos-padrao) ficam escondidos inteiros pra esse tipo e não podem ter o
+// mesmo name (formData.get() sempre pegaria o primeiro elemento no DOM,
+// mesmo escondido — ver comentário em CamposSolicitacao). Mesmo padrão de
+// "mantém o anexo atual se nenhum arquivo novo vier" que lerCamposSemCompra
+// usa.
+async function lerCamposCaixaInterno(
+  formData: FormData,
+  solicitacaoId: string,
+  notaFiscalUrlsAtuais: string[]
+): Promise<
+  Pick<
+    CriarSolicitacaoInput,
+    "dataDespesa" | "centroCustoId" | "centroResultadoId" | "contaContabilId" | "notaFiscalUrls"
+  >
+> {
+  const campos = lerCampos(formData, [
+    "dataDespesa",
+    "centroCustoIdCaixaInterno",
+    "centroResultadoIdCaixaInterno",
+    "contaContabilIdCaixaInterno",
+  ]);
+  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  return {
+    dataDespesa: campos.dataDespesa || null,
+    centroCustoId: campos.centroCustoIdCaixaInterno || null,
+    centroResultadoId: campos.centroResultadoIdCaixaInterno || null,
+    contaContabilId: campos.contaContabilIdCaixaInterno || null,
+    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+  };
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
 // solicitação sempre herda o do solicitante — nunca é uma escolha dele. Qual
@@ -223,6 +258,12 @@ async function parseSolicitacaoForm(
     return {
       ...base,
       ...(await lerCamposRdv(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
+    };
+  }
+  if (tipoCompra?.caixaInterno) {
+    return {
+      ...base,
+      ...(await lerCamposCaixaInterno(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
     };
   }
 

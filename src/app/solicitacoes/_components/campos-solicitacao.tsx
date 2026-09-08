@@ -9,6 +9,7 @@ type TipoCompraLista = {
   dispensaFornecedorForma: boolean;
   empresaFixaId: string | null;
   rdv: boolean;
+  caixaInterno: boolean;
 };
 
 const FORMAS_PAGAMENTO = [
@@ -32,11 +33,19 @@ const FORMAS_PAGAMENTO = [
 //
 // A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nº da RDV,
 // Data da RDV, Valor total, Valor a reembolsar, Valor pago no cartão ONFLY,
-// Informações complementares) é bem diferente da ordem "padrão" — em vez de
-// duplicar campos, cada um deles recebe uma classe própria e a troca de
-// posição é feita via `order` (flexbox) só quando RDV está selecionado, ver
-// globals.css. Por isso todos esses campos precisam ser irmãos diretos
-// (sem wrapper div), diferente de .campos-padrao/.despesa-pessoal-fields.
+// Informações complementares) e para Caixa Interno (Tipo de compra, Empresa,
+// Descrição, Data da despesa, Valor total, Centro de custo, Centro de
+// resultado, Conta contábil, Anexo) é bem diferente da ordem "padrão" — em
+// vez de duplicar campos com o mesmo name (o que causaria colisão no
+// FormData — ver comentário sobre isso em actions.ts), cada campo recebe
+// uma classe própria e a troca de posição é feita via `order` (flexbox) só
+// quando o tipo correspondente está selecionado, ver globals.css. Por isso
+// todos esses campos precisam ser irmãos diretos (sem wrapper div),
+// diferente de .campos-padrao/.despesa-pessoal-fields. Centro de
+// custo/resultado/conta contábil de Caixa Interno usam name próprio
+// (...CaixaInterno) — mesmos dados de centrosCusto/centrosResultado/
+// contasContabeis, mas campos HTML distintos dos de .campos-padrao (que fica
+// escondido inteiro nesse tipo), evitando a mesma colisão.
 export function CamposSolicitacao({
   defaultValues,
   tiposCompra,
@@ -72,6 +81,7 @@ export function CamposSolicitacao({
     dataRdv?: string | null;
     numeroRdv?: string | null;
     possuiAdiantamento?: boolean | null;
+    dataDespesa?: string | null;
   };
   tiposCompra: TipoCompraLista[];
   centrosCusto: Lista[];
@@ -120,6 +130,7 @@ export function CamposSolicitacao({
               data-dispensa-fornecedor-forma={t.dispensaFornecedorForma ? "true" : undefined}
               data-empresa-fixa={t.empresaFixaId ? "true" : undefined}
               data-rdv={t.rdv ? "true" : undefined}
+              data-caixa-interno={t.caixaInterno ? "true" : undefined}
             >
               {t.nome}
             </option>
@@ -208,6 +219,77 @@ export function CamposSolicitacao({
       </label>
       <label className="field campo-anexo-rdv">
         Anexo(s) da RDV (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
+        <input
+          type="file"
+          name="notaFiscal"
+          accept=".pdf,.jpg,.jpeg,.png"
+          multiple
+          className="input-field"
+        />
+        {defaultValues?.temAnexo && (
+          <span className="muted-xs">
+            Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
+            substituí-los.
+          </span>
+        )}
+      </label>
+
+      <label className="field campo-data-despesa">
+        Data da despesa
+        <input
+          name="dataDespesa"
+          type="date"
+          defaultValue={defaultValues?.dataDespesa ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-centro-custo-caixa-interno">
+        Centro de custo
+        <select
+          name="centroCustoIdCaixaInterno"
+          defaultValue={defaultValues?.centroCustoId ?? ""}
+          className="input-field"
+        >
+          <option value="">Selecione</option>
+          {centrosCusto.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field campo-centro-resultado-caixa-interno">
+        Centro de resultado
+        <select
+          name="centroResultadoIdCaixaInterno"
+          defaultValue={defaultValues?.centroResultadoId ?? ""}
+          className="input-field"
+        >
+          <option value="">Selecione</option>
+          {centrosResultado.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field campo-conta-contabil-caixa-interno">
+        Conta contábil
+        <select
+          name="contaContabilIdCaixaInterno"
+          defaultValue={defaultValues?.contaContabilId ?? ""}
+          className="input-field"
+        >
+          <option value="">Selecione</option>
+          {contasContabeis.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field campo-anexo-caixa-interno">
+        Anexo(s) (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
         <input
           type="file"
           name="notaFiscal"

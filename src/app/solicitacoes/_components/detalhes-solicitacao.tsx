@@ -45,7 +45,11 @@ export function DetalhesSolicitacao({
           <dd>{solicitacao.descricao}</dd>
         </div>
         <div>
-          <dt className="muted">{solicitacao.tipoCompra.rdv ? "Valor total" : "Valor"}</dt>
+          <dt className="muted">
+            {solicitacao.tipoCompra.rdv || solicitacao.tipoCompra.caixaInterno
+              ? "Valor total"
+              : "Valor"}
+          </dt>
           <dd>{formatarReais(solicitacao.valor)}</dd>
         </div>
         {solicitacao.valorReembolsar != null && (
@@ -115,6 +119,12 @@ export function DetalhesSolicitacao({
           <div>
             <dt className="muted">Data de vencimento</dt>
             <dd>{solicitacao.dataVencimento.toLocaleDateString("pt-BR")}</dd>
+          </div>
+        )}
+        {solicitacao.dataDespesa && (
+          <div>
+            <dt className="muted">Data da despesa</dt>
+            <dd>{formatarData(solicitacao.dataDespesa)}</dd>
           </div>
         )}
         {solicitacao.dataRdv && (

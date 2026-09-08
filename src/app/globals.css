@@ -381,7 +381,8 @@ a {
   }
 
   form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao,
-  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campos-padrao {
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campos-padrao,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campos-padrao {
     display: none;
   }
 
@@ -392,12 +393,13 @@ a {
 
   /* Mesmo padrão, pra tipo de compra com TipoCompra.dispensaFornecedorForma
      (ex.: Mercado Livre — o link da compra já traz fornecedor e forma de
-     pagamento), TipoCompra.rdv (nunca tem fornecedor) e/ou
+     pagamento), TipoCompra.rdv/caixaInterno (nunca têm fornecedor) e/ou
      TipoCompra.empresaFixaId (empresa sempre a mesma, escolhida no cadastro
      do tipo, não pelo solicitante). Independentes entre si. */
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-fornecedor,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-forma-pagamento {
     display: none;
@@ -444,19 +446,22 @@ a {
     display: flex;
   }
 
-  /* Rótulo do campo Valor muda pra "Valor Total" só em RDV (ele passa a
-     representar a soma de Valor a reembolsar + Valor pago no cartão ONFLY,
-     ver validarCriarSolicitacao) — troca de texto via CSS, sem JS, mesmo
-     espírito das outras alternâncias acima. */
+  /* Rótulo do campo Valor muda pra "Valor Total" em RDV (soma de Valor a
+     reembolsar + Valor pago no cartão ONFLY) e em Caixa Interno (valor total
+     da despesa) — ver validarCriarSolicitacao. Troca de texto via CSS, sem
+     JS, mesmo espírito das outras alternâncias acima. */
   .rotulo-valor-total {
     display: none;
   }
 
-  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-padrao {
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-padrao,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .rotulo-valor-padrao {
     display: none;
   }
 
-  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-total {
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-total,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .rotulo-valor-total {
     display: inline;
   }
 
@@ -497,6 +502,73 @@ a {
     order: -2;
   }
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-anexo-rdv {
+    order: -1;
+  }
+
+  /* Caixa Interno (ver TipoCompra.caixaInterno) — prestação de contas de
+     despesa já paga pelo caixa interno. Mesmo padrão puro-CSS de RDV acima
+     (campos individuais, reordenados via `order`), mas mantém centro de
+     custo/resultado/conta contábil — daqui usam name próprio
+     (...CaixaInterno) pra não colidir no FormData com os mesmos campos
+     dentro de .campos-padrao (que fica escondido inteiro nesse tipo). */
+  .campo-data-despesa,
+  .campo-centro-custo-caixa-interno,
+  .campo-centro-resultado-caixa-interno,
+  .campo-conta-contabil-caixa-interno,
+  .campo-anexo-caixa-interno {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-data-despesa,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-centro-custo-caixa-interno,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-centro-resultado-caixa-interno,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-conta-contabil-caixa-interno,
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-anexo-caixa-interno {
+    display: flex;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-informacoes-complementares {
+    display: none;
+  }
+
+  /* Ordem visual pedida pelo Financeiro pra Caixa Interno: Tipo de compra,
+     Empresa, Descrição, Data da despesa, Valor total, Centro de custo,
+     Centro de resultado, Conta contábil, Anexo. Mesmo raciocínio de valores
+     negativos que a ordem de RDV acima. */
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-tipo-compra {
+    order: -9;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-empresa {
+    order: -8;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-descricao {
+    order: -7;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-data-despesa {
+    order: -6;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-valor {
+    order: -5;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-centro-custo-caixa-interno {
+    order: -4;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-centro-resultado-caixa-interno {
+    order: -3;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-conta-contabil-caixa-interno {
+    order: -2;
+  }
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
+    .campo-anexo-caixa-interno {
     order: -1;
   }
 }

@@ -46,6 +46,7 @@ export function PainelEdicaoReenvio({
             dataRdv: solicitacao.dataRdv?.toISOString().slice(0, 10) ?? null,
             numeroRdv: solicitacao.numeroRdv,
             possuiAdiantamento: solicitacao.possuiAdiantamento,
+            dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
           }}
           {...listas}
         />

@@ -14,6 +14,7 @@ export function TipoCompraForm({
     dispensaFornecedorForma: boolean;
     empresaFixaId: string | null;
     rdv: boolean;
+    caixaInterno: boolean;
   };
   empresas: Lista[];
   action: (formData: FormData) => Promise<void>;
@@ -93,6 +94,16 @@ export function TipoCompraForm({
         />
         É RDV (prestação de contas de reembolso, já aprovada pelo gestor em outro sistema —
         formulário próprio, sem aprovação nem etapa de compra, direto para pagamento)
+      </label>
+      <label className="field-inline">
+        <input
+          name="caixaInterno"
+          type="checkbox"
+          defaultChecked={defaultValues?.caixaInterno}
+        />
+        É Caixa Interno (prestação de contas de despesa já paga pelo caixa interno —
+        formulário próprio, mantém centro de custo/resultado/conta contábil, sem aprovação
+        nem etapa de compra, direto para o Financeiro confirmar sem exigir comprovante)
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

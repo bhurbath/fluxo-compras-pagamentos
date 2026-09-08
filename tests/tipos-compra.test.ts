@@ -142,6 +142,22 @@ describe("tipos de compra", () => {
     expect(atualizado.rdv).toBe(false);
   });
 
+  it("cria com caixaInterno false por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão caixa interno" });
+    expect(tipo.caixaInterno).toBe(false);
+  });
+
+  it("cria e atualiza caixaInterno", async () => {
+    const tipo = await criarTipoCompra({ nome: "Caixa Interno teste", caixaInterno: true });
+    expect(tipo.caixaInterno).toBe(true);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, {
+      nome: tipo.nome,
+      caixaInterno: false,
+    });
+    expect(atualizado.caixaInterno).toBe(false);
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

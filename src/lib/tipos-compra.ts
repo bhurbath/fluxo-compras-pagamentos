@@ -26,6 +26,11 @@ export type TipoCompraInput = {
   // campos de uma RDV e dispensa aprovação/compra, como despesaPessoal (ver
   // workflow.ts).
   rdv?: boolean;
+  // Ver comentário no schema (model TipoCompra) — muda o formulário para os
+  // campos de um Caixa Interno e dispensa aprovação/compra/comprovante de
+  // pagamento, mas mantém centro de custo/resultado/conta contábil (ver
+  // workflow.ts).
+  caixaInterno?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -50,6 +55,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
       empresaFixaId: input.empresaFixaId || null,
       rdv: input.rdv ?? false,
+      caixaInterno: input.caixaInterno ?? false,
     },
   });
 }
@@ -66,6 +72,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       dispensaFornecedorForma: input.dispensaFornecedorForma ?? false,
       empresaFixaId: input.empresaFixaId || null,
       rdv: input.rdv ?? false,
+      caixaInterno: input.caixaInterno ?? false,
     },
   });
 }

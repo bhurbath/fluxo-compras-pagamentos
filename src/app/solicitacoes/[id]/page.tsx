@@ -192,7 +192,11 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             action={reenviarParaPagamentoAction}
             titulo="Corrigir e reenviar para pagamento"
-            despesaPessoal={solicitacao.tipoCompra.despesaPessoal}
+            semEtapaDeCompra={
+              solicitacao.tipoCompra.despesaPessoal ||
+              solicitacao.tipoCompra.rdv ||
+              solicitacao.tipoCompra.caixaInterno
+            }
           />
         )}
 
@@ -201,7 +205,9 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             registrarAction={registrarPagamentoAction}
             recusarAction={recusarPagamentoAction}
-            dispensaComprovante={solicitacao.tipoCompra.exigePrevisaoChegada}
+            dispensaComprovante={
+              solicitacao.tipoCompra.exigePrevisaoChegada || solicitacao.tipoCompra.caixaInterno
+            }
           />
         )}
 

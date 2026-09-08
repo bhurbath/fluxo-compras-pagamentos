@@ -134,6 +134,15 @@ model TipoCompra {
   // validarCriarSolicitacao/mapCamposSolicitacao em workflow.ts.
   rdv Boolean @default(false)
 
+  // Quando true (Caixa Interno — prestação de contas de despesas pagas pelo
+  // caixa interno): mesmo desvio de aprovação/compra de despesaPessoal/rdv
+  // acima (sempre dispensada, semCompra), mas com seu próprio conjunto de
+  // campos — mantém centro de custo/resultado/conta contábil (que os outros
+  // dois dispensam) e não coleta comprovante de pagamento ao confirmar (ver
+  // registrarPagamento em workflow.ts). Vai direto para o Financeiro
+  // confirmar a contabilização, sem etapa de comprador.
+  caixaInterno Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.
@@ -331,6 +340,12 @@ model Solicitacao {
   dataRdv            DateTime?
   numeroRdv          String?
   possuiAdiantamento Boolean?
+
+  // Caixa Interno (ver TipoCompra.caixaInterno): prestação de contas de
+  // despesas pagas pelo caixa interno. valor (campo já existente acima) é o
+  // valor total da despesa; centroCusto/centroResultado/contaContabil acima
+  // continuam obrigatórios para esse tipo (diferente de despesaPessoal/rdv).
+  dataDespesa DateTime?
 
   // Populated by later tickets (comprador assignment, purchase, payment) —
   // nullable because they don't exist until the solicitação reaches that
