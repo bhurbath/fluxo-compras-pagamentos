@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { signIn, signOut } from "@/lib/auth";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
+import { listarDepartamentosGeridos } from "@/lib/gestor";
 
 export default async function Home() {
   const usuario = await getUsuarioAutenticado();
+  const departamentosGeridos = usuario ? await listarDepartamentosGeridos(usuario.id) : [];
 
   return (
     <main className="shell">
@@ -81,6 +83,32 @@ export default async function Home() {
                 >
                   Pendentes de mim
                 </Link>
+
+                {departamentosGeridos.length > 0 && (
+                  <>
+                    <p
+                      className="muted-xs"
+                      style={{
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                        marginTop: "1.5rem",
+                        marginBottom: "0.5rem",
+                        paddingTop: "1.5rem",
+                        borderTop: "1px solid var(--line-soft)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Gestão do departamento
+                    </p>
+                    <Link
+                      href="/departamento"
+                      className="flex items-center justify-between"
+                      style={{ padding: "0.7rem 0", fontWeight: 500, fontSize: "0.9rem" }}
+                    >
+                      Solicitações do meu departamento
+                    </Link>
+                  </>
+                )}
 
                 {usuario.flagFinanceiro && (
                   <>

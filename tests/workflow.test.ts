@@ -2587,6 +2587,19 @@ describe("workflow: listarSolicitacoesParaExportar", () => {
 
     expect(exportadas.map((s) => s.id)).toEqual([segunda.id, primeira.id]);
   });
+
+  it("filtra por um conjunto de departamentos (departamentoIds, tela do gestor)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: doMkt, departamento: marketing } = await criarSolicitacaoEnviada("ex9a");
+    const { solicitacao: doVendas, departamento: vendas } = await criarSolicitacaoEnviada("ex9b");
+    await criarSolicitacaoEnviada("ex9c");
+
+    const exportadas = await listarSolicitacoesParaExportar({
+      departamentoIds: [marketing.id, vendas.id],
+    });
+
+    expect(exportadas.map((s) => s.id).sort()).toEqual([doMkt.id, doVendas.id].sort());
+  });
 });
 
 // Encargos, taxas e outras despesas sem etapa de compra (ver DNI 0007:

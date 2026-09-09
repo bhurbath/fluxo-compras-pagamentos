@@ -1537,6 +1537,12 @@ export async function listarPendentesComprador(compradorId: string) {
 
 export type FiltrosExportacao = {
   departamentoId?: string;
+  // Restringe a um conjunto de departamentos em vez de um só — usado pela
+  // tela /departamento (gestor vê só os departamentos onde é responsável
+  // e/ou diretor). Nunca combinado com departamentoId pelo mesmo chamador:
+  // quem chama decide um ou outro, conforme o usuário tenha ou não filtrado
+  // por um departamento específico dentro do conjunto permitido.
+  departamentoIds?: string[];
   status?: StatusSolicitacao;
   de?: Date;
   ate?: Date;
@@ -1559,7 +1565,7 @@ export type FiltrosExportacao = {
 export async function listarSolicitacoesParaExportar(filtros: FiltrosExportacao) {
   return getDb().solicitacao.findMany({
     where: {
-      departamentoId: filtros.departamentoId,
+      departamentoId: filtros.departamentoIds ? { in: filtros.departamentoIds } : filtros.departamentoId,
       status: filtros.status,
       criadoEm: { gte: filtros.de, lte: filtros.ate },
     },
