@@ -58,7 +58,7 @@ export default async function DepartamentoPage({
 
   return (
     <main className="shell">
-      <div className="shell-inner" style={{ maxWidth: "64rem" }}>
+      <div className="shell-inner" style={{ maxWidth: "76rem" }}>
         <PainelConsultaSolicitacoes
           titulo={titulo}
           descricao="Solicitações dos departamentos onde você é responsável ou diretor, com o status atual de cada uma."

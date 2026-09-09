@@ -42,7 +42,7 @@ export default async function ConsultarPage({
 
   return (
     <main className="shell">
-      <div className="shell-inner" style={{ maxWidth: "64rem" }}>
+      <div className="shell-inner" style={{ maxWidth: "76rem" }}>
         <PainelConsultaSolicitacoes
           titulo="Consultar solicitações"
           descricao="Todas as solicitações do sistema, com o status atual de cada uma."
