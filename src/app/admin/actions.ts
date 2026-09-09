@@ -271,6 +271,7 @@ function parseTipoCompraForm(formData: FormData): TipoCompraInput {
     empresaFixaId: String(formData.get("empresaFixaId") ?? "").trim() || null,
     rdv: formData.get("rdv") === "on",
     caixaInterno: formData.get("caixaInterno") === "on",
+    fundoFixo: formData.get("fundoFixo") === "on",
   };
 }
 

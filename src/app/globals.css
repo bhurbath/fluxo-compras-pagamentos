@@ -463,7 +463,8 @@ a {
 
   form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campos-padrao,
-  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campos-padrao {
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campos-padrao,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campos-padrao {
     display: none;
   }
 
@@ -474,13 +475,14 @@ a {
 
   /* Mesmo padrão, pra tipo de compra com TipoCompra.dispensaFornecedorForma
      (ex.: Mercado Livre — o link da compra já traz fornecedor e forma de
-     pagamento), TipoCompra.rdv/caixaInterno (nunca têm fornecedor) e/ou
-     TipoCompra.empresaFixaId (empresa sempre a mesma, escolhida no cadastro
-     do tipo, não pelo solicitante). Independentes entre si. */
+     pagamento), TipoCompra.rdv/caixaInterno/fundoFixo (nunca têm fornecedor)
+     e/ou TipoCompra.empresaFixaId (empresa sempre a mesma, escolhida no
+     cadastro do tipo, não pelo solicitante). Independentes entre si. */
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campo-fornecedor,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-fornecedor,
   form:has(select[name="tipoCompraId"] option[data-dispensa-fornecedor-forma]:checked)
     .campo-forma-pagamento {
     display: none;
@@ -528,21 +530,23 @@ a {
   }
 
   /* Rótulo do campo Valor muda pra "Valor Total" em RDV (soma de Valor a
-     reembolsar + Valor pago no cartão ONFLY) e em Caixa Interno (valor total
-     da despesa) — ver validarCriarSolicitacao. Troca de texto via CSS, sem
-     JS, mesmo espírito das outras alternâncias acima. */
+     reembolsar + Valor pago no cartão ONFLY), em Caixa Interno (valor total
+     da despesa) e em Fundo Fixo (valor total da recarga) — ver
+     validarCriarSolicitacao. Troca de texto via CSS, sem JS, mesmo espírito
+     das outras alternâncias acima. */
   .rotulo-valor-total {
     display: none;
   }
 
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-padrao,
-  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
-    .rotulo-valor-padrao {
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .rotulo-valor-padrao,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .rotulo-valor-padrao {
     display: none;
   }
 
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .rotulo-valor-total,
-  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .rotulo-valor-total {
+  form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .rotulo-valor-total,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .rotulo-valor-total {
     display: inline;
   }
 
@@ -650,6 +654,55 @@ a {
   }
   form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked)
     .campo-anexo-caixa-interno {
+    order: -1;
+  }
+
+  /* Recarga ONFLY/Fundo Fixo (ver TipoCompra.fundoFixo) — mesmo padrão
+     puro-CSS de RDV/Caixa Interno acima. Data de vencimento e anexo usam
+     name próprio (...FundoFixo) pra não colidir no FormData com os campos
+     equivalentes dentro de .despesa-pessoal-fields/.sem-compra-fields (que
+     ficam escondidos inteiros nesse tipo) — mesmo raciocínio de Caixa
+     Interno. Anexo é o único opcional entre os quatro tipos "sem etapa de
+     compra" (ver validarCriarSolicitacao). */
+  .campo-data-vencimento-fundo-fixo,
+  .campo-anexo-fundo-fixo,
+  .campo-pix-deposito {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked)
+    .campo-data-vencimento-fundo-fixo,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-anexo-fundo-fixo,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-pix-deposito {
+    display: flex;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-descricao,
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked)
+    .campo-informacoes-complementares {
+    display: none;
+  }
+
+  /* Ordem visual pedida pelo Financeiro pra Fundo Fixo: Tipo de compra,
+     Empresa, Data de vencimento, Valor total, Anexo, PIX para depósito.
+     Mesmo raciocínio de valores negativos que as ordens acima. */
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-tipo-compra {
+    order: -6;
+  }
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-empresa {
+    order: -5;
+  }
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked)
+    .campo-data-vencimento-fundo-fixo {
+    order: -4;
+  }
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-valor {
+    order: -3;
+  }
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-anexo-fundo-fixo {
+    order: -2;
+  }
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-pix-deposito {
     order: -1;
   }
 }

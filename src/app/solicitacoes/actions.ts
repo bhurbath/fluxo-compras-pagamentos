@@ -191,6 +191,27 @@ async function lerCamposCaixaInterno(
   };
 }
 
+// Recarga ONFLY/Fundo Fixo (ver TipoCompra.fundoFixo) — data de vencimento e
+// PIX para depósito sob name próprio (...FundoFixo/pixDeposito), mesmo
+// raciocínio de Caixa Interno pra evitar colisão com os campos equivalentes
+// escondidos em .despesa-pessoal-fields/.sem-compra-fields. Único tipo em
+// que o anexo é opcional — não cai no padrão "mantém o anexo atual se
+// nenhum arquivo novo vier" dos outros lerCampos*, porque aqui a ausência
+// de arquivo é uma resposta válida, não só a falta de reenvio.
+async function lerCamposFundoFixo(
+  formData: FormData,
+  solicitacaoId: string,
+  notaFiscalUrlsAtuais: string[]
+): Promise<Pick<CriarSolicitacaoInput, "dataVencimento" | "dadosPagamento" | "notaFiscalUrls">> {
+  const campos = lerCampos(formData, ["dataVencimentoFundoFixo", "pixDeposito"]);
+  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  return {
+    dataVencimento: campos.dataVencimentoFundoFixo || null,
+    dadosPagamento: campos.pixDeposito || null,
+    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+  };
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
 // solicitação sempre herda o do solicitante — nunca é uma escolha dele. Qual
@@ -223,9 +244,10 @@ async function parseSolicitacaoForm(
 
   const tipoCompra = await obterTipoCompra(campos.tipoCompraId);
 
-  // RDV não coleta descrição no formulário (ver CamposSolicitacao) — o
-  // workflow gera uma a partir do nº da RDV (ver mapCamposSolicitacao).
-  if (!tipoCompra?.rdv) {
+  // RDV e Fundo Fixo não coletam descrição no formulário (ver
+  // CamposSolicitacao) — o workflow gera uma automaticamente pra ambos (ver
+  // mapCamposSolicitacao).
+  if (!tipoCompra?.rdv && !tipoCompra?.fundoFixo) {
     exigirTodos({ descricao: campos.descricao }, "A descrição é obrigatória.");
   }
 
@@ -264,6 +286,12 @@ async function parseSolicitacaoForm(
     return {
       ...base,
       ...(await lerCamposCaixaInterno(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
+    };
+  }
+  if (tipoCompra?.fundoFixo) {
+    return {
+      ...base,
+      ...(await lerCamposFundoFixo(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
     };
   }
 

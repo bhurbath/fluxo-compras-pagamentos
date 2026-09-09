@@ -41,12 +41,18 @@ export function DetalhesSolicitacao({
           </dd>
         </div>
         <div>
+          <dt className="muted">Data da solicitação</dt>
+          <dd>{formatarData(solicitacao.criadoEm)}</dd>
+        </div>
+        <div>
           <dt className="muted">Descrição</dt>
           <dd>{solicitacao.descricao}</dd>
         </div>
         <div>
           <dt className="muted">
-            {solicitacao.tipoCompra.rdv || solicitacao.tipoCompra.caixaInterno
+            {solicitacao.tipoCompra.rdv ||
+            solicitacao.tipoCompra.caixaInterno ||
+            solicitacao.tipoCompra.fundoFixo
               ? "Valor total"
               : "Valor"}
           </dt>
@@ -259,7 +265,9 @@ export function DetalhesSolicitacao({
         )}
         {solicitacao.dadosPagamento && (
           <div>
-            <dt className="muted">Dados de pagamento</dt>
+            <dt className="muted">
+              {solicitacao.tipoCompra.fundoFixo ? "PIX para depósito" : "Dados de pagamento"}
+            </dt>
             <dd>{solicitacao.dadosPagamento}</dd>
           </div>
         )}

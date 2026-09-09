@@ -15,6 +15,7 @@ export function TipoCompraForm({
     empresaFixaId: string | null;
     rdv: boolean;
     caixaInterno: boolean;
+    fundoFixo: boolean;
   };
   empresas: Lista[];
   action: (formData: FormData) => Promise<void>;
@@ -104,6 +105,16 @@ export function TipoCompraForm({
         É Caixa Interno (prestação de contas de despesa já paga pelo caixa interno —
         formulário próprio, mantém centro de custo/resultado/conta contábil, sem aprovação
         nem etapa de compra, direto para o Financeiro confirmar sem exigir comprovante)
+      </label>
+      <label className="field-inline">
+        <input
+          name="fundoFixo"
+          type="checkbox"
+          defaultChecked={defaultValues?.fundoFixo}
+        />
+        É Recarga ONFLY/Fundo Fixo (formulário próprio — data de vencimento, valor total,
+        PIX para depósito e anexo opcional; passa pela aprovação normal de nível 1/2, mas
+        sem etapa de compra nem comprovante de pagamento do Financeiro)
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

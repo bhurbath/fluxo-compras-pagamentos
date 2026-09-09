@@ -158,6 +158,19 @@ describe("tipos de compra", () => {
     expect(atualizado.caixaInterno).toBe(false);
   });
 
+  it("cria com fundoFixo false por padrão", async () => {
+    const tipo = await criarTipoCompra({ nome: "Padrão fundo fixo" });
+    expect(tipo.fundoFixo).toBe(false);
+  });
+
+  it("cria e atualiza fundoFixo", async () => {
+    const tipo = await criarTipoCompra({ nome: "Fundo Fixo teste", fundoFixo: true });
+    expect(tipo.fundoFixo).toBe(true);
+
+    const atualizado = await atualizarTipoCompra(tipo.id, { nome: tipo.nome, fundoFixo: false });
+    expect(atualizado.fundoFixo).toBe(false);
+  });
+
   it("exclui um tipo de compra", async () => {
     const tipo = await criarTipoCompra({ nome: "Descartável" });
 

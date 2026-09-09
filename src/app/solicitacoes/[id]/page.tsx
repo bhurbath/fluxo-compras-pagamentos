@@ -195,7 +195,8 @@ export default async function SolicitacaoDetalhePage({
             semEtapaDeCompra={
               solicitacao.tipoCompra.despesaPessoal ||
               solicitacao.tipoCompra.rdv ||
-              solicitacao.tipoCompra.caixaInterno
+              solicitacao.tipoCompra.caixaInterno ||
+              solicitacao.tipoCompra.fundoFixo
             }
           />
         )}
@@ -206,7 +207,9 @@ export default async function SolicitacaoDetalhePage({
             registrarAction={registrarPagamentoAction}
             recusarAction={recusarPagamentoAction}
             dispensaComprovante={
-              solicitacao.tipoCompra.exigePrevisaoChegada || solicitacao.tipoCompra.caixaInterno
+              solicitacao.tipoCompra.exigePrevisaoChegada ||
+              solicitacao.tipoCompra.caixaInterno ||
+              solicitacao.tipoCompra.fundoFixo
             }
           />
         )}

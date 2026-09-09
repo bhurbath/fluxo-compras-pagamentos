@@ -40,6 +40,7 @@ export default async function EditarTipoCompraPage({
           empresaFixaId: tipo.empresaFixaId,
           rdv: tipo.rdv,
           caixaInterno: tipo.caixaInterno,
+          fundoFixo: tipo.fundoFixo,
         }}
         empresas={empresas}
         action={atualizarTipoCompraAction.bind(null, id)}

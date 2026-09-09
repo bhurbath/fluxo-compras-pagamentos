@@ -69,6 +69,7 @@ async function criarTipoCompra(
     exigePrevisaoChegada?: boolean;
     rdv?: boolean;
     caixaInterno?: boolean;
+    fundoFixo?: boolean;
   } = {}
 ) {
   return testDb.tipoCompra.create({
@@ -78,6 +79,7 @@ async function criarTipoCompra(
       exigePrevisaoChegada: overrides.exigePrevisaoChegada ?? false,
       rdv: overrides.rdv ?? false,
       caixaInterno: overrides.caixaInterno ?? false,
+      fundoFixo: overrides.fundoFixo ?? false,
     },
   });
 }
@@ -3426,6 +3428,155 @@ describe("workflow: Caixa Interno", () => {
 
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.notaFiscalUrls).toEqual(["ci-novo.pdf"]);
+    expect(reenviada.metodoPagamento).toBeNull();
+    expect(reenviada.fornecedorDocumento).toBeNull();
+  });
+});
+
+// Recarga ONFLY/Fundo Fixo (ver TipoCompra.fundoFixo) — diferente dos outros
+// três tipos "sem etapa de compra" acima, esse continua passando pela
+// aprovação normal de nível 1/2 por alçada; só pula comprador/compra.
+async function criarSolicitacaoFundoFixoEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-ff-${sufixo}`);
+  const tipo = await criarTipoCompra(`Fundo Fixo ${sufixo}`, { fundoFixo: true });
+  const empresa = await testDb.empresa.create({ data: { nome: `Empresa ff ${sufixo}` } });
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "",
+    valor: overrides.valor ?? "500",
+    empresaId: empresa.id,
+    dataVencimento: "2026-09-20",
+    dadosPagamento: "Chave PIX: 12345678900",
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante, tipo };
+}
+
+describe("workflow: Recarga ONFLY/Fundo Fixo", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige data de vencimento e PIX para depósito, mas não exige anexo", async () => {
+    const solicitante = await criarUsuario("ff1");
+    const departamento = await criarDepartamento("ff1");
+    const tipo = await criarTipoCompra("Fundo Fixo ff1", { fundoFixo: true });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa ff1" } });
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Recarga",
+      valor: "500",
+      empresaId: empresa.id,
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow(/data de vencimento/);
+    await expect(
+      criarSolicitacao({ ...base, dataVencimento: "2026-09-20" })
+    ).rejects.toThrow(/PIX para depósito/);
+
+    const solicitacao = await criarSolicitacao({
+      ...base,
+      dataVencimento: "2026-09-20",
+      dadosPagamento: "Chave PIX: 12345678900",
+    });
+    expect(solicitacao.notaFiscalUrls).toEqual([]);
+  });
+
+  it("não exige fornecedor nem os campos padrão (centro de custo, resultado, conta contábil, forma de pagamento)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoFundoFixoEnviada("ff2");
+
+    expect(solicitacao.fornecedor).toBeNull();
+    expect(solicitacao.centroCustoId).toBeNull();
+    expect(solicitacao.centroResultadoId).toBeNull();
+    expect(solicitacao.contaContabilId).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+    expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.dadosPagamento).toBe("Chave PIX: 12345678900");
+    expect(solicitacao.descricao).toContain("vencimento em 2026-09-20");
+  });
+
+  it("passa pela aprovação normal de nível 1/2 (não é auto-aprovado como os demais tipos sem compra)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoFundoFixoEnviada("ff3");
+
+    expect(solicitacao.status).toBe("ENVIADO");
+  });
+
+  it("ao ser aprovada (nível 1, sem exigir nível 2), pula direto para AGUARDANDO_PAGAMENTO sem designar comprador", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoFundoFixoEnviada("ff4");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("exige aprovação de nível 2 quando a alçada exigir", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao, departamento } = await criarSolicitacaoFundoFixoEnviada("ff5", {
+      valor: "5000",
+    });
+
+    const aguardandoNivel2 = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    expect(aguardandoNivel2.status).toBe("AGUARDANDO_NIVEL2");
+
+    const aprovada = await aprovarNivel2(solicitacao.id, departamento.diretorId);
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+  });
+
+  it("permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoFundoFixoEnviada("ff6");
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-ff6");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBeNull();
+  });
+
+  it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento, solicitante } = await criarSolicitacaoFundoFixoEnviada("ff7");
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-ff7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Dados incompletos");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrls: ["ff-novo.pdf"],
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.metodoPagamento).toBeNull();
     expect(reenviada.fornecedorDocumento).toBeNull();
   });

@@ -31,6 +31,11 @@ export type TipoCompraInput = {
   // pagamento, mas mantém centro de custo/resultado/conta contábil (ver
   // workflow.ts).
   caixaInterno?: boolean;
+  // Ver comentário no schema (model TipoCompra) — muda o formulário para os
+  // campos de uma Recarga ONFLY/Fundo Fixo e dispensa compra/comprovante de
+  // pagamento, mas — diferente de despesaPessoal/rdv/caixaInterno — continua
+  // passando pela aprovação normal de nível 1/2 (ver workflow.ts).
+  fundoFixo?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -56,6 +61,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       empresaFixaId: input.empresaFixaId || null,
       rdv: input.rdv ?? false,
       caixaInterno: input.caixaInterno ?? false,
+      fundoFixo: input.fundoFixo ?? false,
     },
   });
 }
@@ -73,6 +79,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       empresaFixaId: input.empresaFixaId || null,
       rdv: input.rdv ?? false,
       caixaInterno: input.caixaInterno ?? false,
+      fundoFixo: input.fundoFixo ?? false,
     },
   });
 }

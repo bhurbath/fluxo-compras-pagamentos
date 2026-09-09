@@ -143,6 +143,16 @@ model TipoCompra {
   // confirmar a contabilização, sem etapa de comprador.
   caixaInterno Boolean @default(false)
 
+  // Quando true (Recarga ONFLY / Fundo Fixo): diferente de despesaPessoal/
+  // rdv/caixaInterno acima, ESSE tipo passa pela aprovação normal de nível
+  // 1/2 conforme a alçada do valor (ver resolverEstadoInicial) — só pula a
+  // etapa de compra/comprador (semCompra sempre true), indo direto para o
+  // Financeiro assim que aprovada. Sem comprovante de pagamento exigido do
+  // Financeiro (mesmo mecanismo de caixaInterno — ver registrarPagamento).
+  // Reaproveita campos já existentes (valor, dataVencimento, dadosPagamento,
+  // notaFiscalUrls) com outro sentido — ver mapCamposSolicitacao.
+  fundoFixo Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.

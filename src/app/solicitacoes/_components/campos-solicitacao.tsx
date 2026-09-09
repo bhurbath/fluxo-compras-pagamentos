@@ -10,6 +10,7 @@ type TipoCompraLista = {
   empresaFixaId: string | null;
   rdv: boolean;
   caixaInterno: boolean;
+  fundoFixo: boolean;
 };
 
 const FORMAS_PAGAMENTO = [
@@ -33,19 +34,22 @@ const FORMAS_PAGAMENTO = [
 //
 // A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nº da RDV,
 // Data da RDV, Valor total, Valor a reembolsar, Valor pago no cartão ONFLY,
-// Informações complementares) e para Caixa Interno (Tipo de compra, Empresa,
+// Informações complementares), para Caixa Interno (Tipo de compra, Empresa,
 // Descrição, Data da despesa, Valor total, Centro de custo, Centro de
-// resultado, Conta contábil, Anexo) é bem diferente da ordem "padrão" — em
-// vez de duplicar campos com o mesmo name (o que causaria colisão no
-// FormData — ver comentário sobre isso em actions.ts), cada campo recebe
-// uma classe própria e a troca de posição é feita via `order` (flexbox) só
-// quando o tipo correspondente está selecionado, ver globals.css. Por isso
-// todos esses campos precisam ser irmãos diretos (sem wrapper div),
-// diferente de .campos-padrao/.despesa-pessoal-fields. Centro de
-// custo/resultado/conta contábil de Caixa Interno usam name próprio
-// (...CaixaInterno) — mesmos dados de centrosCusto/centrosResultado/
-// contasContabeis, mas campos HTML distintos dos de .campos-padrao (que fica
-// escondido inteiro nesse tipo), evitando a mesma colisão.
+// resultado, Conta contábil, Anexo) e para Recarga ONFLY/Fundo Fixo (Tipo de
+// compra, Empresa, Data de vencimento, Valor total, Anexo, PIX para
+// depósito) é bem diferente da ordem "padrão" — em vez de duplicar campos
+// com o mesmo name (o que causaria colisão no FormData — ver comentário
+// sobre isso em actions.ts), cada campo recebe uma classe própria e a troca
+// de posição é feita via `order` (flexbox) só quando o tipo correspondente
+// está selecionado, ver globals.css. Por isso todos esses campos precisam
+// ser irmãos diretos (sem wrapper div), diferente de .campos-padrao/
+// .despesa-pessoal-fields. Centro de custo/resultado/conta contábil de
+// Caixa Interno e a data de vencimento/anexo de Fundo Fixo usam name
+// próprio (...CaixaInterno/...FundoFixo) — mesmos dados/mesma coluna, mas
+// campos HTML distintos dos equivalentes em .campos-padrao/.despesa-
+// pessoal-fields (que ficam escondidos inteiros nesses tipos), evitando a
+// mesma colisão.
 export function CamposSolicitacao({
   defaultValues,
   tiposCompra,
@@ -131,6 +135,7 @@ export function CamposSolicitacao({
               data-empresa-fixa={t.empresaFixaId ? "true" : undefined}
               data-rdv={t.rdv ? "true" : undefined}
               data-caixa-interno={t.caixaInterno ? "true" : undefined}
+              data-fundo-fixo={t.fundoFixo ? "true" : undefined}
             >
               {t.nome}
             </option>
@@ -303,6 +308,34 @@ export function CamposSolicitacao({
             substituí-los.
           </span>
         )}
+      </label>
+
+      <label className="field campo-data-vencimento-fundo-fixo">
+        Data de vencimento
+        <input
+          name="dataVencimentoFundoFixo"
+          type="date"
+          defaultValue={defaultValues?.dataVencimento ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-anexo-fundo-fixo">
+        Anexo (opcional — PDF, JPG ou PNG)
+        <input type="file" name="notaFiscal" accept=".pdf,.jpg,.jpeg,.png" className="input-field" />
+        {defaultValues?.temAnexo && (
+          <span className="muted-xs">
+            Já existe um anexo nesta solicitação — envie um novo arquivo só se quiser
+            substituí-lo.
+          </span>
+        )}
+      </label>
+      <label className="field campo-pix-deposito">
+        PIX para depósito
+        <textarea
+          name="pixDeposito"
+          defaultValue={defaultValues?.dadosPagamento ?? ""}
+          className="input-field"
+        />
       </label>
 
       <div className="campos-padrao">
