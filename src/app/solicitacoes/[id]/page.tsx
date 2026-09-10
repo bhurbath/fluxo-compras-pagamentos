@@ -24,7 +24,7 @@ import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
 import { PainelRegistrarPagamento } from "../_components/painel-registrar-pagamento";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { obterSolicitacao } from "@/lib/workflow";
+import { dispensaComprovantePagamento, obterSolicitacao } from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
 import { gerarUrlAssinada } from "@/lib/storage";
@@ -206,11 +206,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             registrarAction={registrarPagamentoAction}
             recusarAction={recusarPagamentoAction}
-            dispensaComprovante={
-              solicitacao.tipoCompra.exigePrevisaoChegada ||
-              solicitacao.tipoCompra.caixaInterno ||
-              solicitacao.tipoCompra.fundoFixo
-            }
+            dispensaComprovante={dispensaComprovantePagamento(solicitacao.tipoCompra)}
           />
         )}
 

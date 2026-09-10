@@ -2,11 +2,10 @@ export function PainelRegistrarPagamento({
   solicitacaoId,
   registrarAction,
   recusarAction,
-  // Mercado Livre, cartão de crédito etc. (ver TipoCompra.exigePrevisaoChegada)
-  // — o comprovante desses meios de pagamento normalmente já está registrado
-  // na fatura do cartão/na conta Mercado Livre, então o Financeiro pode
-  // confirmar o pagamento sem anexar nada (ver registrarPagamento em
-  // workflow.ts).
+  // Mercado Livre, cartão de crédito, RDV, Caixa Interno e Recarga ONFLY/
+  // Fundo Fixo (ver dispensaComprovantePagamento em workflow.ts) — nenhum
+  // desses precisa que o Financeiro anexe comprovante para confirmar o
+  // pagamento.
   dispensaComprovante = false,
 }: {
   solicitacaoId: string;

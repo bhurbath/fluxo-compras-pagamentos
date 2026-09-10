@@ -3254,6 +3254,18 @@ describe("workflow: RDV", () => {
     expect(reenviada.metodoPagamento).toBeNull();
     expect(reenviada.fornecedorDocumento).toBeNull();
   });
+
+  it("permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoRdvEnviada("rdv7");
+    const financeiro = await criarUsuario("fin-rdv7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBeNull();
+  });
 });
 
 // Prestação de contas de despesa já paga pelo caixa interno (ver

@@ -1461,16 +1461,35 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
+// Usado por registrarPagamento abaixo e pela tela de detalhe da solicitação
+// (ver dispensaComprovante em solicitacoes/[id]/page.tsx) — um único lugar
+// para essa lista de tipos não sair de sincronia entre a validação e a UI.
+// TipoCompra.exigePrevisaoChegada (Mercado Livre, cartão de crédito — o
+// comprovante desses meios de pagamento normalmente já está registrado na
+// fatura do cartão/na conta Mercado Livre), TipoCompra.rdv (já é uma
+// prestação de contas, não uma compra — não há "comprovante da compra" a
+// anexar), TipoCompra.caixaInterno e TipoCompra.fundoFixo (nenhum dos dois é
+// um pagamento de fato — o Financeiro só confirma a contabilização/recarga)
+// dispensam o comprovante.
+export function dispensaComprovantePagamento(tipoCompra: {
+  exigePrevisaoChegada: boolean;
+  rdv: boolean;
+  caixaInterno: boolean;
+  fundoFixo: boolean;
+}): boolean {
+  return (
+    tipoCompra.exigePrevisaoChegada ||
+    tipoCompra.rdv ||
+    tipoCompra.caixaInterno ||
+    tipoCompra.fundoFixo
+  );
+}
+
 export type RegistrarPagamentoInput = {
   // Mesmo esquema de notaFiscalUrl em enviarParaPagamento: caminho no bucket
   // de Storage, não uma URL pública — ver src/lib/storage.ts. Ausente/nulo é
-  // válido só quando TipoCompra.exigePrevisaoChegada (Mercado Livre, cartão
-  // de crédito — o comprovante desses meios de pagamento normalmente já está
-  // registrado na fatura do cartão/na conta Mercado Livre),
-  // TipoCompra.caixaInterno (não é um pagamento de fato, só confirmação de
-  // contabilização de uma despesa já paga pelo caixa interno) ou
-  // TipoCompra.fundoFixo (idem, o Financeiro só confirma que fez a recarga/
-  // depósito) — nesses casos o Financeiro confirma sem anexar nada.
+  // válido só quando dispensaComprovantePagamento (acima) — nesses casos o
+  // Financeiro confirma sem anexar nada.
   comprovantePagamentoUrl?: string | null;
   // Link de download já assinado (gerarUrlAssinada, com validade maior que
   // o padrão — o e-mail pode ser aberto dias depois), gerado por quem chama
@@ -1499,12 +1518,7 @@ export async function registrarPagamento(
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
-  if (
-    !solicitacao.tipoCompra.exigePrevisaoChegada &&
-    !solicitacao.tipoCompra.caixaInterno &&
-    !solicitacao.tipoCompra.fundoFixo &&
-    !comprovanteTrim
-  ) {
+  if (!dispensaComprovantePagamento(solicitacao.tipoCompra) && !comprovanteTrim) {
     throw new Error("O comprovante de pagamento é obrigatório.");
   }
   if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
