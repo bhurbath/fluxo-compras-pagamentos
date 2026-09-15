@@ -2,7 +2,8 @@
 // workflow.ts) — só aparece depois que o Financeiro já registrou o
 // pagamento (PainelRegistrarPagamento) e a solicitação ficou aguardando o
 // comprovante. Não tem opção de recusar aqui — o pagamento já foi feito,
-// só falta anexar o comprovante.
+// só falta anexar o comprovante. Aceita mais de um arquivo (ex.:
+// comprovante do banco + extrato).
 export function PainelConfirmarComprovante({
   solicitacaoId,
   action,
@@ -19,11 +20,12 @@ export function PainelConfirmarComprovante({
         className="flex flex-col gap-2"
       >
         <label className="field">
-          Comprovante de pagamento (PDF, JPG ou PNG)
+          Comprovante de pagamento (PDF, JPG ou PNG — pode selecionar mais de um arquivo)
           <input
             type="file"
             name="comprovante"
             accept=".pdf,.jpg,.jpeg,.png"
+            multiple
             required
             className="input-field"
           />

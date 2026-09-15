@@ -2266,7 +2266,7 @@ describe("workflow: registrarPagamento", () => {
     });
 
     expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
-    expect(registrada.comprovantePagamentoUrl).toBeNull();
+    expect(registrada.comprovantePagamentoUrls).toEqual([]);
     expect(registrada.dataPrevistaPagamento?.toISOString().slice(0, 10)).toBe("2026-09-30");
   });
 
@@ -2349,7 +2349,7 @@ describe("workflow: registrarPagamento", () => {
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBeNull();
+    expect(paga.comprovantePagamentoUrls).toEqual([]);
   });
 });
 
@@ -2376,19 +2376,30 @@ describe("workflow: confirmarComprovante", () => {
     const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc1");
 
     const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "cc1/comprovante.pdf",
+      comprovantePagamentoUrls: ["cc1/comprovante.pdf"],
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBe("cc1/comprovante.pdf");
+    expect(paga.comprovantePagamentoUrls).toEqual(["cc1/comprovante.pdf"]);
   });
 
   it("lança erro se o comprovante não for informado", async () => {
     const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc2");
 
     await expect(
-      confirmarComprovante(solicitacao.id, financeiro.id, { comprovantePagamentoUrl: "  " })
+      confirmarComprovante(solicitacao.id, financeiro.id, { comprovantePagamentoUrls: ["  "] })
     ).rejects.toThrow();
+  });
+
+  it("aceita mais de um comprovante", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc7");
+
+    const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrls: ["cc7/banco.pdf", "cc7/extrato.pdf"],
+    });
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrls).toEqual(["cc7/banco.pdf", "cc7/extrato.pdf"]);
   });
 
   it("lança erro se quem confirma não é do Financeiro", async () => {
@@ -2397,7 +2408,7 @@ describe("workflow: confirmarComprovante", () => {
 
     await expect(
       confirmarComprovante(solicitacao.id, naoFinanceiro.id, {
-        comprovantePagamentoUrl: "cc3/comprovante.pdf",
+        comprovantePagamentoUrls: ["cc3/comprovante.pdf"],
       })
     ).rejects.toThrow();
   });
@@ -2409,7 +2420,7 @@ describe("workflow: confirmarComprovante", () => {
 
     await expect(
       confirmarComprovante(solicitacao.id, financeiro.id, {
-        comprovantePagamentoUrl: "cc4/comprovante.pdf",
+        comprovantePagamentoUrls: ["cc4/comprovante.pdf"],
       })
     ).rejects.toThrow();
   });
@@ -2418,7 +2429,7 @@ describe("workflow: confirmarComprovante", () => {
     const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc5");
 
     await confirmarComprovante(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "cc5/comprovante.pdf",
+      comprovantePagamentoUrls: ["cc5/comprovante.pdf"],
     });
 
     const historico = await testDb.solicitacaoHistorico.findMany({
@@ -2436,12 +2447,29 @@ describe("workflow: confirmarComprovante", () => {
     enviarSpy.mockClear();
 
     await confirmarComprovante(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "cc6/comprovante.pdf",
+      comprovantePagamentoUrls: ["cc6/comprovante.pdf"],
     });
 
     expect(enviarSpy).toHaveBeenCalledWith(
       expect.objectContaining({ to: solicitante.email })
     );
+  });
+
+  it("inclui um link numerado por comprovante no e-mail quando há mais de um", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc8");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrls: ["cc8/banco.pdf", "cc8/extrato.pdf"],
+      comprovanteUrlsAssinadas: ["https://exemplo.com/banco", "https://exemplo.com/extrato"],
+    });
+
+    const [{ html }] = enviarSpy.mock.calls.at(-1)!;
+    expect(html).toContain("Baixar comprovante 1");
+    expect(html).toContain("Baixar comprovante 2");
+    expect(html).toContain("https://exemplo.com/banco");
+    expect(html).toContain("https://exemplo.com/extrato");
   });
 });
 
@@ -3423,14 +3451,14 @@ describe("workflow: RDV", () => {
     });
 
     expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
-    expect(registrada.comprovantePagamentoUrl).toBeNull();
+    expect(registrada.comprovantePagamentoUrls).toEqual([]);
 
     const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "rdv7/comprovante.pdf",
+      comprovantePagamentoUrls: ["rdv7/comprovante.pdf"],
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBe("rdv7/comprovante.pdf");
+    expect(paga.comprovantePagamentoUrls).toEqual(["rdv7/comprovante.pdf"]);
   });
 
   it("com valor a reembolsar igual a zero (só cartão ONFLY), permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
@@ -3447,7 +3475,7 @@ describe("workflow: RDV", () => {
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBeNull();
+    expect(paga.comprovantePagamentoUrls).toEqual([]);
   });
 });
 
@@ -3608,7 +3636,7 @@ describe("workflow: Caixa Interno", () => {
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBeNull();
+    expect(paga.comprovantePagamentoUrls).toEqual([]);
   });
 
   it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {
@@ -3759,7 +3787,7 @@ describe("workflow: Recarga ONFLY/Fundo Fixo", () => {
     });
 
     expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBeNull();
+    expect(paga.comprovantePagamentoUrls).toEqual([]);
   });
 
   it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor", async () => {

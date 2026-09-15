@@ -101,25 +101,30 @@ export const registrarPagamentoAction = withFinanceiro(
 
 // Segunda etapa (ver confirmarComprovante em workflow.ts) — só alcançável
 // depois que registrarPagamentoAction já deixou a solicitação aguardando o
-// comprovante.
+// comprovante. Aceita mais de um arquivo (ex.: comprovante do banco +
+// extrato) — formData.getAll(), não .get(), como em lerArquivos de
+// src/app/solicitacoes/actions.ts.
 export const confirmarComprovanteAction = withFinanceiro(
   async (usuario, id: string, formData: FormData) => {
-    const comprovante = formData.get("comprovante");
-    if (!(comprovante instanceof File) || comprovante.size === 0) {
+    const comprovantes = formData
+      .getAll("comprovante")
+      .filter((valor): valor is File => valor instanceof File && valor.size > 0);
+    if (comprovantes.length === 0) {
       redirectComErro(`/solicitacoes/${id}`, "O comprovante de pagamento é obrigatório.");
     }
 
     try {
-      const comprovantePagamentoUrl = await uploadAnexo(comprovante as File, id);
+      const comprovantePagamentoUrls = await Promise.all(
+        comprovantes.map((arquivo) => uploadAnexo(arquivo, id))
+      );
       // Validade maior que o padrão de página (1h) — o e-mail pode ser
       // aberto dias depois de enviado.
-      const comprovanteUrlAssinada = await gerarUrlAssinada(
-        comprovantePagamentoUrl,
-        7 * 24 * 60 * 60
+      const comprovanteUrlsAssinadas = await Promise.all(
+        comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url, 7 * 24 * 60 * 60))
       );
       await confirmarComprovante(id, usuario.id, {
-        comprovantePagamentoUrl,
-        comprovanteUrlAssinada,
+        comprovantePagamentoUrls,
+        comprovanteUrlsAssinadas,
       });
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));

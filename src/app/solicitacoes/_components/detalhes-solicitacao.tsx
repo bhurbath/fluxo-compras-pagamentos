@@ -13,19 +13,20 @@ const FORMA_PAGAMENTO_LEGIVEL: Record<string, string> = {
 export function DetalhesSolicitacao({
   solicitacao,
   notaFiscalUrlsAssinadas,
-  comprovantePagamentoUrlAssinada,
+  comprovantePagamentoUrlsAssinadas,
   cotacaoUrlAssinada,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
   // geradas pelo Server Component pai a partir dos caminhos guardados em
-  // solicitacao.notaFiscalUrls/comprovantePagamentoUrl/cotacaoUrl (que não
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrl (que não
   // são URLs utilizáveis diretamente) — ver src/lib/storage.ts. Cada entrada
-  // de notaFiscalUrlsAssinadas corresponde, na mesma posição, a uma entrada
-  // de solicitacao.notaFiscalUrls; null quando não há anexo ou a URL não
-  // pôde ser gerada.
+  // de notaFiscalUrlsAssinadas/comprovantePagamentoUrlsAssinadas corresponde,
+  // na mesma posição, a uma entrada de
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls; null quando a URL
+  // não pôde ser gerada.
   notaFiscalUrlsAssinadas?: (string | null)[];
-  comprovantePagamentoUrlAssinada?: string | null;
+  comprovantePagamentoUrlsAssinadas?: (string | null)[];
   cotacaoUrlAssinada?: string | null;
 }) {
   return (
@@ -283,22 +284,30 @@ export function DetalhesSolicitacao({
             <dd>{formatarData(solicitacao.dataPrevistaPagamento)}</dd>
           </div>
         )}
-        {solicitacao.comprovantePagamentoUrl && (
+        {solicitacao.comprovantePagamentoUrls.length > 0 && (
           <div>
             <dt className="muted">Comprovante de pagamento</dt>
-            <dd>
-              {comprovantePagamentoUrlAssinada ? (
-                <a
-                  href={comprovantePagamentoUrlAssinada}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                >
-                  Baixar comprovante
-                </a>
-              ) : (
-                "Link indisponível no momento — atualize a página."
-              )}
+            <dd className="flex flex-col gap-1">
+              {solicitacao.comprovantePagamentoUrls.map((_url, indice) => {
+                const urlAssinada = comprovantePagamentoUrlsAssinadas?.[indice];
+                return (
+                  <span key={indice}>
+                    {urlAssinada ? (
+                      <a
+                        href={urlAssinada}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="link"
+                      >
+                        Baixar comprovante
+                        {solicitacao.comprovantePagamentoUrls.length > 1 ? ` ${indice + 1}` : ""}
+                      </a>
+                    ) : (
+                      "Link indisponível no momento — atualize a página."
+                    )}
+                  </span>
+                );
+              })}
             </dd>
           </div>
         )}

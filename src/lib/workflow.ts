@@ -1585,15 +1585,17 @@ export async function registrarPagamento(
 }
 
 export type ConfirmarComprovanteInput = {
-  // Caminho no bucket de Storage, não uma URL pública — ver
-  // src/lib/storage.ts. Sempre obrigatório aqui: só chega a essa etapa quem
-  // já passou por registrarPagamento acima e, portanto, é de um tipo de
-  // compra que exige comprovante (dispensaComprovantePagamento já teria
-  // levado direto a PAGO, sem essa segunda etapa).
-  comprovantePagamentoUrl: string;
-  // Mesmo esquema do link assinado em registrarPagamento — ver comentário
-  // lá.
-  comprovanteUrlAssinada?: string | null;
+  // Um ou mais caminhos no bucket de Storage, não URLs públicas — ver
+  // src/lib/storage.ts. Pelo menos um sempre obrigatório aqui: só chega a
+  // essa etapa quem já passou por registrarPagamento acima e, portanto, é
+  // de um tipo de compra que exige comprovante (dispensaComprovantePagamento
+  // já teria levado direto a PAGO, sem essa segunda etapa). Mais de um
+  // comprovante é permitido (ex.: comprovante do banco + extrato).
+  comprovantePagamentoUrls: string[];
+  // Links temporários gerados em confirmarComprovanteAction (ver
+  // src/app/aprovacoes/actions.ts) para incluir no e-mail — mesma posição,
+  // mesma ordem que comprovantePagamentoUrls.
+  comprovanteUrlsAssinadas?: (string | null)[];
 };
 
 // Segunda etapa da confirmação de pagamento — só alcançável depois de
@@ -1604,8 +1606,10 @@ export async function confirmarComprovante(
   atorId: string,
   input: ConfirmarComprovanteInput
 ) {
-  const comprovanteTrim = input.comprovantePagamentoUrl?.trim();
-  if (!comprovanteTrim) {
+  const comprovantePagamentoUrls = (input.comprovantePagamentoUrls ?? [])
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  if (comprovantePagamentoUrls.length === 0) {
     throw new Error("O comprovante de pagamento é obrigatório.");
   }
 
@@ -1623,12 +1627,15 @@ export async function confirmarComprovante(
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.AGUARDANDO_COMPROVANTE,
-    { status: StatusSolicitacao.PAGO, comprovantePagamentoUrl: comprovanteTrim },
+    { status: StatusSolicitacao.PAGO, comprovantePagamentoUrls },
     "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
   await registrarHistorico(id, "pago", atorId);
 
+  const linksComprovante = (input.comprovanteUrlsAssinadas ?? []).filter(
+    (url): url is string => Boolean(url)
+  );
   await getEmailSender().send({
     to: solicitacao.solicitante.email,
     subject: "Comprovante de pagamento disponível",
@@ -1636,9 +1643,15 @@ export async function confirmarComprovante(
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>O comprovante de pagamento da sua solicitação "${solicitacao.descricao}" ` +
       `(${formatarReais(solicitacao.valor)}) já está disponível.</p>` +
-      (input.comprovanteUrlAssinada
-        ? `<p><a href="${input.comprovanteUrlAssinada}">Baixar comprovante</a> ` +
-          "(link válido por 7 dias).</p>"
+      (linksComprovante.length > 0
+        ? "<p>" +
+          linksComprovante
+            .map(
+              (url, indice) =>
+                `<a href="${url}">Baixar comprovante${linksComprovante.length > 1 ? ` ${indice + 1}` : ""}</a>`
+            )
+            .join(" — ") +
+          " (link válido por 7 dias).</p>"
         : "<p>O comprovante já está disponível na página da solicitação.</p>") +
       linkAcessoHtml(id),
   });

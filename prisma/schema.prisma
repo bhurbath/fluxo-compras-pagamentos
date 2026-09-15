@@ -393,7 +393,10 @@ model Solicitacao {
   // instantâneo, dependendo do banco/meio). Não é a data em que o status
   // muda — isso já acontece no mesmo momento em que essa data é informada.
   dataPrevistaPagamento   DateTime?
-  comprovantePagamentoUrl String?
+  // Um ou mais caminhos no bucket de Storage (ver confirmarComprovante em
+  // workflow.ts) — o Financeiro pode precisar anexar mais de um comprovante
+  // para o mesmo pagamento (ex.: comprovante do banco + extrato).
+  comprovantePagamentoUrls String[]        @default([])
   motivoRejeicao          String?
   motivoRecusaPagamento   String?
 
