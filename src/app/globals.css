@@ -501,6 +501,7 @@ a {
      si), em vez de agrupados num wrapper. Descrição não é coletada nesse
      tipo (o resto do sistema usa uma gerada a partir do nº da RDV — ver
      mapCamposSolicitacao em workflow.ts). */
+  .campo-nome-colaborador-rdv,
   .campo-numero-rdv,
   .campo-data-rdv,
   .campo-valor-reembolsar,
@@ -517,6 +518,7 @@ a {
     display: none;
   }
 
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-nome-colaborador-rdv,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-numero-rdv,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-data-rdv,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-valor-reembolsar,
@@ -551,17 +553,21 @@ a {
   }
 
   /* Ordem visual pedida pelo Financeiro pra RDV: Tipo de compra, Empresa,
-     Nº da RDV, Data da RDV, Valor total, Valor a reembolsar, Valor pago no
-     cartão ONFLY, Informações complementares, Possui adiantamento, Anexo.
-     Valores negativos (não 1..10) de propósito: assim todo campo sem order
-     explícito (o próprio .campos-padrao/.despesa-pessoal-fields — já
-     escondidos — e a linha de botões, fora de CamposSolicitacao, renderizada
-     pela página) mantém seu order:0 padrão e continua depois destes, sem
-     precisar tocar em cada página que usa este componente. */
+     Nome do colaborador, Nº da RDV, Data da RDV, Valor total, Valor a
+     reembolsar, Valor pago no cartão ONFLY, Informações complementares,
+     Possui adiantamento, Anexo. Valores negativos (não 1..11) de propósito:
+     assim todo campo sem order explícito (o próprio .campos-padrao/
+     .despesa-pessoal-fields — já escondidos — e a linha de botões, fora de
+     CamposSolicitacao, renderizada pela página) mantém seu order:0 padrão e
+     continua depois destes, sem precisar tocar em cada página que usa este
+     componente. */
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-tipo-compra {
-    order: -10;
+    order: -11;
   }
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-empresa {
+    order: -10;
+  }
+  form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-nome-colaborador-rdv {
     order: -9;
   }
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campo-numero-rdv {

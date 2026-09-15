@@ -140,17 +140,25 @@ async function lerCamposRdv(
     | "valorCartaoOnfly"
     | "dataRdv"
     | "numeroRdv"
+    | "nomeColaboradorRdv"
     | "possuiAdiantamento"
     | "notaFiscalUrls"
   >
 > {
-  const campos = lerCampos(formData, ["valorReembolsar", "valorCartaoOnfly", "dataRdv", "numeroRdv"]);
+  const campos = lerCampos(formData, [
+    "valorReembolsar",
+    "valorCartaoOnfly",
+    "dataRdv",
+    "numeroRdv",
+    "nomeColaboradorRdv",
+  ]);
   const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
   return {
     valorReembolsar: campos.valorReembolsar || null,
     valorCartaoOnfly: campos.valorCartaoOnfly || null,
     dataRdv: campos.dataRdv || null,
     numeroRdv: campos.numeroRdv || null,
+    nomeColaboradorRdv: campos.nomeColaboradorRdv || null,
     possuiAdiantamento: formData.get("possuiAdiantamento") === "on",
     notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
   };

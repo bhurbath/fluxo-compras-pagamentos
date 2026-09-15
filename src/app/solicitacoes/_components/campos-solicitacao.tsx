@@ -32,9 +32,9 @@ const FORMAS_PAGAMENTO = [
 // `:has()` no CSS troca os campos "padrão" pelos de despesa de pessoal
 // conforme a opção selecionada no momento.
 //
-// A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nº da RDV,
-// Data da RDV, Valor total, Valor a reembolsar, Valor pago no cartão ONFLY,
-// Informações complementares), para Caixa Interno (Tipo de compra, Empresa,
+// A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nome do
+// colaborador, Nº da RDV, Data da RDV, Valor total, Valor a reembolsar,
+// Valor pago no cartão ONFLY, Informações complementares), para Caixa Interno (Tipo de compra, Empresa,
 // Descrição, Data da despesa, Valor total, Centro de custo, Centro de
 // resultado, Conta contábil, Anexo) e para Recarga ONFLY/Fundo Fixo (Tipo de
 // compra, Empresa, Data de vencimento, Valor total, Anexo, PIX para
@@ -84,6 +84,7 @@ export function CamposSolicitacao({
     valorCartaoOnfly?: string | null;
     dataRdv?: string | null;
     numeroRdv?: string | null;
+    nomeColaboradorRdv?: string | null;
     possuiAdiantamento?: boolean | null;
     dataDespesa?: string | null;
   };
@@ -165,6 +166,15 @@ export function CamposSolicitacao({
             </option>
           ))}
         </select>
+      </label>
+      <label className="field campo-nome-colaborador-rdv">
+        Nome do colaborador
+        <input
+          name="nomeColaboradorRdv"
+          type="text"
+          defaultValue={defaultValues?.nomeColaboradorRdv ?? ""}
+          className="input-field"
+        />
       </label>
       <label className="field campo-numero-rdv">
         Nº da RDV

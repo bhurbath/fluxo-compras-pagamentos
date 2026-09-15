@@ -350,11 +350,19 @@ model Solicitacao {
   // pelo gestor em outro sistema. valor (campo já existente acima) é o valor
   // total da RDV, sempre igual a valorReembolsar + valorCartaoOnfly (checado
   // em validarCriarSolicitacao); nenhum dos campos abaixo existe fora desse
-  // tipo de solicitação.
+  // tipo de solicitação. nomeColaboradorRdv é lançamento manual (o
+  // colaborador não precisa estar cadastrado como Usuario no sistema) e é
+  // incorporado à descrição gerada automaticamente junto com numeroRdv (ver
+  // mapCamposSolicitacao) — usado nos relatórios/exportação. valorReembolsar
+  // diferente de zero também é o que decide, em dispensaComprovantePagamento,
+  // se essa RDV passa pela segunda etapa de confirmação de pagamento
+  // (anexar comprovante) — só o reembolso em dinheiro ao colaborador exige
+  // comprovante; a parte paga no cartão ONFLY não.
   valorReembolsar    Decimal? @db.Decimal(12, 2)
   valorCartaoOnfly   Decimal? @db.Decimal(12, 2)
   dataRdv            DateTime?
   numeroRdv          String?
+  nomeColaboradorRdv String?
   possuiAdiantamento Boolean?
 
   // Caixa Interno (ver TipoCompra.caixaInterno): prestação de contas de

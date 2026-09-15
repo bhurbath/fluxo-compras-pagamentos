@@ -3178,7 +3178,17 @@ describe("workflow: despesa de pessoal", () => {
 // mas para esse tipo de compra.
 async function criarSolicitacaoRdvEnviada(
   sufixo: string,
-  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+  overrides: {
+    solicitanteId?: string;
+    responsavelId?: string;
+    diretorId?: string;
+    valor?: string;
+    // Default deixa valorReembolsar diferente de zero (ver
+    // dispensaComprovantePagamento) — passar "0"/valorCartaoOnfly igual ao
+    // valor total simula o caso em que a RDV é só cartão ONFLY.
+    valorReembolsar?: string;
+    valorCartaoOnfly?: string;
+  } = {}
 ) {
   const departamento = await criarDepartamento(sufixo, {
     responsavelId: overrides.responsavelId,
@@ -3189,8 +3199,10 @@ async function criarSolicitacaoRdvEnviada(
     : await criarUsuario(`sol-rdv-${sufixo}`);
   const tipo = await criarTipoCompra(`RDV ${sufixo}`, { rdv: true });
   const empresa = await testDb.empresa.create({ data: { nome: `Empresa rdv ${sufixo}` } });
-  const valorCartaoOnfly = 120.5;
   const valor = Number(overrides.valor ?? "500");
+  const valorCartaoOnfly = overrides.valorCartaoOnfly ?? "120.50";
+  const valorReembolsar =
+    overrides.valorReembolsar ?? (valor - Number(valorCartaoOnfly)).toFixed(2);
   const rascunho = await criarSolicitacao({
     solicitanteId: solicitante.id,
     departamentoId: departamento.id,
@@ -3201,10 +3213,11 @@ async function criarSolicitacaoRdvEnviada(
     descricao: "",
     valor: valor.toString(),
     empresaId: empresa.id,
-    valorReembolsar: (valor - valorCartaoOnfly).toFixed(2),
-    valorCartaoOnfly: valorCartaoOnfly.toString(),
+    valorReembolsar,
+    valorCartaoOnfly,
     dataRdv: "2026-09-15",
     numeroRdv: "RDV-001",
+    nomeColaboradorRdv: "Colaborador Teste",
     possuiAdiantamento: false,
     notaFiscalUrls: ["rdv.pdf"],
   });
@@ -3258,6 +3271,16 @@ describe("workflow: RDV", () => {
         dataRdv: "2026-09-15",
         numeroRdv: "RDV-002",
       })
+    ).rejects.toThrow(/colaborador/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        valorReembolsar: "400",
+        valorCartaoOnfly: "100",
+        dataRdv: "2026-09-15",
+        numeroRdv: "RDV-002",
+        nomeColaboradorRdv: "Fulano de Tal",
+      })
     ).rejects.toThrow(/adiantamento/);
     await expect(
       criarSolicitacao({
@@ -3266,6 +3289,7 @@ describe("workflow: RDV", () => {
         valorCartaoOnfly: "100",
         dataRdv: "2026-09-15",
         numeroRdv: "RDV-002",
+        nomeColaboradorRdv: "Fulano de Tal",
         possuiAdiantamento: false,
       })
     ).rejects.toThrow(/anexo/);
@@ -3312,6 +3336,7 @@ describe("workflow: RDV", () => {
       valorCartaoOnfly: "100",
       dataRdv: "2026-09-15",
       numeroRdv: "RDV-003",
+      nomeColaboradorRdv: "Fulano de Tal",
       possuiAdiantamento: true,
       notaFiscalUrls: ["rdv.pdf"],
     });
@@ -3325,8 +3350,9 @@ describe("workflow: RDV", () => {
     expect(solicitacao.valorReembolsar?.toString()).toBe("400");
     expect(solicitacao.valorCartaoOnfly?.toString()).toBe("100");
     expect(solicitacao.numeroRdv).toBe("RDV-003");
+    expect(solicitacao.nomeColaboradorRdv).toBe("Fulano de Tal");
     expect(solicitacao.possuiAdiantamento).toBe(true);
-    expect(solicitacao.descricao).toBe("Reembolso RDV nº RDV-003");
+    expect(solicitacao.descricao).toBe("Reembolso RDV nº RDV-003 — Fulano de Tal");
   });
 
   it("pula aprovação e vai direto para AGUARDANDO_PAGAMENTO, mesmo quando o solicitante não é o responsável e o valor exigiria nível 2", async () => {
@@ -3386,10 +3412,34 @@ describe("workflow: RDV", () => {
     expect(reenviada.fornecedorDocumento).toBeNull();
   });
 
-  it("permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
+  it("com valor a reembolsar diferente de zero, exige comprovante na segunda etapa antes de ir para PAGO", async () => {
     await criarFaixa("0", null, false);
     const { solicitacao } = await criarSolicitacaoRdvEnviada("rdv7");
     const financeiro = await criarUsuario("fin-rdv7");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const registrada = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+
+    expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
+    expect(registrada.comprovantePagamentoUrl).toBeNull();
+
+    const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "rdv7/comprovante.pdf",
+    });
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBe("rdv7/comprovante.pdf");
+  });
+
+  it("com valor a reembolsar igual a zero (só cartão ONFLY), permite ao Financeiro registrar o pagamento sem anexar comprovante", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoRdvEnviada("rdv8", {
+      valorReembolsar: "0",
+      valorCartaoOnfly: "500",
+    });
+    const financeiro = await criarUsuario("fin-rdv8");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
     const paga = await registrarPagamento(solicitacao.id, financeiro.id, {

@@ -145,6 +145,12 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.numeroRdv}</dd>
           </div>
         )}
+        {solicitacao.nomeColaboradorRdv && (
+          <div>
+            <dt className="muted">Nome do colaborador</dt>
+            <dd>{solicitacao.nomeColaboradorRdv}</dd>
+          </div>
+        )}
         {solicitacao.valorCartaoOnfly != null && (
           <div>
             <dt className="muted">Valor pago no Cartão ONFLY</dt>

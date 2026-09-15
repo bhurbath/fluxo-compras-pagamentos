@@ -73,11 +73,14 @@ export type CriarSolicitacaoInput = {
   // total, sempre igual a valorReembolsar + valorCartaoOnfly — checado em
   // validarCriarSolicitacao. descricao não é coletada no formulário para
   // esse tipo (ver CamposSolicitacao) — mapCamposSolicitacao gera uma a
-  // partir do nº da RDV.
+  // partir do nº da RDV e do nome do colaborador. nomeColaboradorRdv é
+  // lançamento manual — o colaborador não precisa estar cadastrado como
+  // Usuario no sistema.
   valorReembolsar?: string | null;
   valorCartaoOnfly?: string | null;
   dataRdv?: string | null;
   numeroRdv?: string | null;
+  nomeColaboradorRdv?: string | null;
   possuiAdiantamento?: boolean | null;
   // Caixa Interno (ver TipoCompra.caixaInterno): obrigatória. Diferente de
   // despesaPessoal/rdv, esse tipo continua coletando centro de custo,
@@ -200,6 +203,9 @@ function validarCriarSolicitacao(
     }
     if (!input.numeroRdv?.trim()) {
       throw new Error("O nº da RDV é obrigatório.");
+    }
+    if (!input.nomeColaboradorRdv?.trim()) {
+      throw new Error("O nome do colaborador é obrigatório.");
     }
     if (typeof input.possuiAdiantamento !== "boolean") {
       throw new Error("Informe se a RDV possui adiantamento.");
@@ -390,11 +396,12 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     departamentoId: input.departamentoId,
     tipoCompraId: input.tipoCompraId,
     // RDV e Fundo Fixo não coletam descrição no formulário (ver
-    // CamposSolicitacao) — o resto do sistema (e-mails, listas) ainda usa
-    // esse campo como o "título" da solicitação, então gera um a partir do
-    // nº da RDV ou da data de vencimento, respectivamente.
+    // CamposSolicitacao) — o resto do sistema (e-mails, listas, relatórios)
+    // ainda usa esse campo como o "título" da solicitação, então gera um a
+    // partir do nº da RDV e do nome do colaborador (RDV) ou da data de
+    // vencimento (Fundo Fixo).
     descricao: rdv
-      ? `Reembolso RDV nº ${input.numeroRdv?.trim()}`
+      ? `Reembolso RDV nº ${input.numeroRdv?.trim()} — ${input.nomeColaboradorRdv?.trim()}`
       : fundoFixo
         ? `Recarga ONFLY/Fundo Fixo — vencimento em ${input.dataVencimento?.trim()}`
         : input.descricao.trim(),
@@ -424,6 +431,7 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     valorCartaoOnfly: rdv ? input.valorCartaoOnfly?.trim() || null : null,
     dataRdv: rdv && input.dataRdv ? new Date(input.dataRdv) : null,
     numeroRdv: rdv ? input.numeroRdv?.trim() || null : null,
+    nomeColaboradorRdv: rdv ? input.nomeColaboradorRdv?.trim() || null : null,
     possuiAdiantamento: rdv ? (input.possuiAdiantamento ?? false) : null,
     dataDespesa: caixaInterno && input.dataDespesa ? new Date(input.dataDespesa) : null,
   };
@@ -1471,28 +1479,30 @@ export async function recusarPagamento(id: string, atorId: string, motivo: strin
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
-// Usado por registrarPagamento abaixo e pela tela de detalhe da solicitação
-// (ver dispensaComprovante em solicitacoes/[id]/page.tsx) — um único lugar
-// para essa lista de tipos não sair de sincronia entre a validação e a UI.
-// TipoCompra.exigePrevisaoChegada (Mercado Livre, cartão de crédito — o
-// comprovante desses meios de pagamento normalmente já está registrado na
-// fatura do cartão/na conta Mercado Livre), TipoCompra.rdv (já é uma
-// prestação de contas, não uma compra — não há "comprovante da compra" a
-// anexar), TipoCompra.caixaInterno e TipoCompra.fundoFixo (nenhum dos dois é
-// um pagamento de fato — o Financeiro só confirma a contabilização/recarga)
-// dispensam o comprovante.
-export function dispensaComprovantePagamento(tipoCompra: {
-  exigePrevisaoChegada: boolean;
-  rdv: boolean;
-  caixaInterno: boolean;
-  fundoFixo: boolean;
+// Usado só por registrarPagamento, abaixo, pra decidir entre PAGO direto ou
+// AGUARDANDO_COMPROVANTE. TipoCompra.exigePrevisaoChegada (Mercado Livre,
+// cartão de crédito — o comprovante desses meios de pagamento normalmente já
+// está registrado na fatura do cartão/na conta Mercado Livre),
+// TipoCompra.caixaInterno e TipoCompra.fundoFixo (nenhum dos dois é um
+// pagamento de fato — o Financeiro só confirma a contabilização/recarga)
+// sempre dispensam o comprovante. TipoCompra.rdv é um caso à parte: só
+// dispensa quando valorReembolsar é zero (só cartão ONFLY, sem repasse em
+// dinheiro ao colaborador) — havendo valor a reembolsar, é um pagamento de
+// verdade ao colaborador e exige comprovante como qualquer outro.
+export function dispensaComprovantePagamento(solicitacao: {
+  tipoCompra: {
+    exigePrevisaoChegada: boolean;
+    rdv: boolean;
+    caixaInterno: boolean;
+    fundoFixo: boolean;
+  };
+  valorReembolsar: Prisma.Decimal | null;
 }): boolean {
-  return (
-    tipoCompra.exigePrevisaoChegada ||
-    tipoCompra.rdv ||
-    tipoCompra.caixaInterno ||
-    tipoCompra.fundoFixo
-  );
+  const { tipoCompra, valorReembolsar } = solicitacao;
+  if (tipoCompra.rdv) {
+    return valorReembolsar == null || valorReembolsar.isZero();
+  }
+  return tipoCompra.exigePrevisaoChegada || tipoCompra.caixaInterno || tipoCompra.fundoFixo;
 }
 
 export type RegistrarPagamentoInput = {
@@ -1538,7 +1548,7 @@ export async function registrarPagamento(
     );
   }
 
-  const vaiDiretoParaPago = dispensaComprovantePagamento(solicitacao.tipoCompra);
+  const vaiDiretoParaPago = dispensaComprovantePagamento(solicitacao);
   const novoStatus = vaiDiretoParaPago
     ? StatusSolicitacao.PAGO
     : StatusSolicitacao.AGUARDANDO_COMPROVANTE;

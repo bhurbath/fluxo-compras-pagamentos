@@ -45,6 +45,7 @@ export function PainelEdicaoReenvio({
             valorCartaoOnfly: solicitacao.valorCartaoOnfly?.toString() ?? null,
             dataRdv: solicitacao.dataRdv?.toISOString().slice(0, 10) ?? null,
             numeroRdv: solicitacao.numeroRdv,
+            nomeColaboradorRdv: solicitacao.nomeColaboradorRdv,
             possuiAdiantamento: solicitacao.possuiAdiantamento,
             dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
           }}
