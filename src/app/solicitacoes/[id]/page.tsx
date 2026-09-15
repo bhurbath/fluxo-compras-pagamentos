@@ -4,6 +4,7 @@ import { StatusSolicitacao } from "@prisma/client";
 import {
   aprovarNivel1Action,
   aprovarNivel2Action,
+  confirmarComprovanteAction,
   designarCompradorManualmenteAction,
   registrarPagamentoAction,
   recusarPagamentoAction,
@@ -22,9 +23,10 @@ import { PainelDesignacaoComprador } from "../_components/painel-designacao-comp
 import { PainelConfirmarCompra } from "../_components/painel-confirmar-compra";
 import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
 import { PainelRegistrarPagamento } from "../_components/painel-registrar-pagamento";
+import { PainelConfirmarComprovante } from "../_components/painel-confirmar-comprovante";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { dispensaComprovantePagamento, obterSolicitacao } from "@/lib/workflow";
+import { obterSolicitacao } from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
 import { gerarUrlAssinada } from "@/lib/storage";
@@ -101,6 +103,12 @@ export default async function SolicitacaoDetalhePage({
 
   const podeAprovarPagamento =
     solicitacao.status === StatusSolicitacao.AGUARDANDO_PAGAMENTO && usuario.flagFinanceiro;
+
+  // Segunda etapa (ver confirmarComprovante em workflow.ts) — só existe
+  // depois que o Financeiro já registrou o pagamento na primeira etapa,
+  // para tipos de compra que exigem comprovante.
+  const podeConfirmarComprovante =
+    solicitacao.status === StatusSolicitacao.AGUARDANDO_COMPROVANTE && usuario.flagFinanceiro;
 
   // Só busca as listas dos dropdowns quando a seção de edição vai
   // efetivamente aparecer — evita 6 consultas desnecessárias em toda
@@ -206,7 +214,13 @@ export default async function SolicitacaoDetalhePage({
             solicitacaoId={solicitacao.id}
             registrarAction={registrarPagamentoAction}
             recusarAction={recusarPagamentoAction}
-            dispensaComprovante={dispensaComprovantePagamento(solicitacao.tipoCompra)}
+          />
+        )}
+
+        {podeConfirmarComprovante && (
+          <PainelConfirmarComprovante
+            solicitacaoId={solicitacao.id}
+            action={confirmarComprovanteAction}
           />
         )}
 

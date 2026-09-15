@@ -271,6 +271,12 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.dadosPagamento}</dd>
           </div>
         )}
+        {solicitacao.dataPrevistaPagamento && (
+          <div>
+            <dt className="muted">Data prevista do pagamento</dt>
+            <dd>{formatarData(solicitacao.dataPrevistaPagamento)}</dd>
+          </div>
+        )}
         {solicitacao.comprovantePagamentoUrl && (
           <div>
             <dt className="muted">Comprovante de pagamento</dt>

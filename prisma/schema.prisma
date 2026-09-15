@@ -278,6 +278,12 @@ enum StatusSolicitacao {
   COMPRA_CONFIRMADA
   AGUARDANDO_PAGAMENTO
   PAGAMENTO_RECUSADO
+  // Financeiro já registrou o pagamento no banco e informou a data prevista
+  // ao solicitante (ver registrarPagamento em workflow.ts), mas ainda
+  // precisa anexar o comprovante (ver confirmarComprovante) — só existe
+  // para tipos de compra que exigem comprovante (ver
+  // dispensaComprovantePagamento); os demais vão direto para PAGO.
+  AGUARDANDO_COMPROVANTE
   PAGO
 }
 
@@ -373,6 +379,12 @@ model Solicitacao {
   fornecedorDocumento     String?
   metodoPagamento         MetodoPagamento?
   dadosPagamento          String?
+  // Preenchida na primeira etapa de confirmação de pagamento (ver
+  // registrarPagamento) — data que o Financeiro informa ao solicitante como
+  // previsão de quando o pagamento deve mesmo cair na conta (nem sempre
+  // instantâneo, dependendo do banco/meio). Não é a data em que o status
+  // muda — isso já acontece no mesmo momento em que essa data é informada.
+  dataPrevistaPagamento   DateTime?
   comprovantePagamentoUrl String?
   motivoRejeicao          String?
   motivoRecusaPagamento   String?

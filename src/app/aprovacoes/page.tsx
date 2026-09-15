@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import {
   listarPendentesComprador,
+  listarPendentesComprovante,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
@@ -21,9 +22,14 @@ export default async function AprovacoesPage() {
     listarPendentesNivel2(usuario.id),
     listarPendentesComprador(usuario.id),
   ]);
-  const [pendentesDesignacaoComprador, pendentesPagamento] = usuario.flagFinanceiro
-    ? await Promise.all([listarPendentesDesignacaoComprador(), listarPendentesPagamento()])
-    : [null, null];
+  const [pendentesDesignacaoComprador, pendentesPagamento, pendentesComprovante] =
+    usuario.flagFinanceiro
+      ? await Promise.all([
+          listarPendentesDesignacaoComprador(),
+          listarPendentesPagamento(),
+          listarPendentesComprovante(),
+        ])
+      : [null, null, null];
 
   return (
     <main className="shell">
@@ -61,6 +67,14 @@ export default async function AprovacoesPage() {
             titulo="Aprovação de pagamento (Financeiro)"
             itens={pendentesPagamento}
             vazioMensagem="Nenhuma solicitação aguardando aprovação de pagamento."
+          />
+        )}
+
+        {pendentesComprovante && (
+          <TabelaSolicitacoes
+            titulo="Confirmar comprovante (Financeiro)"
+            itens={pendentesComprovante}
+            vazioMensagem="Nenhuma solicitação aguardando confirmação de comprovante."
           />
         )}
 

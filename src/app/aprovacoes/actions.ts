@@ -9,6 +9,7 @@ import { gerarUrlAssinada, uploadAnexo } from "@/lib/storage";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  confirmarComprovante,
   designarCompradorManualmente,
   registrarPagamento,
   recusarPagamento,
@@ -82,24 +83,41 @@ export const recusarPagamentoAction = withFinanceiro(
   }
 );
 
+// Primeira etapa (ver registrarPagamento em workflow.ts) — nunca lê anexo
+// nenhum aqui, mesmo para tipos que exigem comprovante: isso fica pra
+// confirmarComprovanteAction, a segunda etapa, abaixo.
 export const registrarPagamentoAction = withFinanceiro(
   async (usuario, id: string, formData: FormData) => {
+    const dataPrevistaPagamento = String(formData.get("dataPrevistaPagamento") ?? "");
+    try {
+      await registrarPagamento(id, usuario.id, { dataPrevistaPagamento });
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// Segunda etapa (ver confirmarComprovante em workflow.ts) — só alcançável
+// depois que registrarPagamentoAction já deixou a solicitação aguardando o
+// comprovante.
+export const confirmarComprovanteAction = withFinanceiro(
+  async (usuario, id: string, formData: FormData) => {
     const comprovante = formData.get("comprovante");
-    // Obrigatório ou não depende do tipo de compra (Mercado Livre/cartão de
-    // crédito dispensam — ver TipoCompra.exigePrevisaoChegada), o que só
-    // registrarPagamento (workflow.ts) sabe decidir; aqui só lê o que veio.
-    const temArquivo = comprovante instanceof File && comprovante.size > 0;
+    if (!(comprovante instanceof File) || comprovante.size === 0) {
+      redirectComErro(`/solicitacoes/${id}`, "O comprovante de pagamento é obrigatório.");
+    }
 
     try {
-      let comprovantePagamentoUrl: string | null = null;
-      let comprovanteUrlAssinada: string | null = null;
-      if (temArquivo) {
-        comprovantePagamentoUrl = await uploadAnexo(comprovante as File, id);
-        // Validade maior que o padrão de página (1h) — o e-mail pode ser
-        // aberto dias depois de enviado.
-        comprovanteUrlAssinada = await gerarUrlAssinada(comprovantePagamentoUrl, 7 * 24 * 60 * 60);
-      }
-      await registrarPagamento(id, usuario.id, {
+      const comprovantePagamentoUrl = await uploadAnexo(comprovante as File, id);
+      // Validade maior que o padrão de página (1h) — o e-mail pode ser
+      // aberto dias depois de enviado.
+      const comprovanteUrlAssinada = await gerarUrlAssinada(
+        comprovantePagamentoUrl,
+        7 * 24 * 60 * 60
+      );
+      await confirmarComprovante(id, usuario.id, {
         comprovantePagamentoUrl,
         comprovanteUrlAssinada,
       });

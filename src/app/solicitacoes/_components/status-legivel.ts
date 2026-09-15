@@ -10,6 +10,7 @@ export const STATUS_LEGIVEL: Record<string, string> = {
   COMPRA_CONFIRMADA: "Compra confirmada",
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
   PAGAMENTO_RECUSADO: "Pagamento recusado",
+  AGUARDANDO_COMPROVANTE: "Aguardando comprovante",
   PAGO: "Pago",
 };
 
@@ -24,5 +25,6 @@ export const STATUS_TONE: Record<string, "progress" | "success" | "danger" | und
   COMPRA_CONFIRMADA: "progress",
   AGUARDANDO_PAGAMENTO: "progress",
   PAGAMENTO_RECUSADO: "danger",
+  AGUARDANDO_COMPROVANTE: "progress",
   PAGO: "success",
 };

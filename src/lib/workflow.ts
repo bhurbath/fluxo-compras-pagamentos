@@ -1407,6 +1407,16 @@ export async function listarPendentesPagamento() {
   });
 }
 
+// Fila da segunda etapa (ver confirmarComprovante) — solicitações onde o
+// Financeiro já registrou o pagamento e só falta anexar o comprovante.
+export async function listarPendentesComprovante() {
+  return getDb().solicitacao.findMany({
+    where: { status: StatusSolicitacao.AGUARDANDO_COMPROVANTE },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
+}
+
 export async function recusarPagamento(id: string, atorId: string, motivo: string) {
   const motivoTrim = motivo.trim();
   if (!motivoTrim) {
@@ -1486,27 +1496,31 @@ export function dispensaComprovantePagamento(tipoCompra: {
 }
 
 export type RegistrarPagamentoInput = {
-  // Mesmo esquema de notaFiscalUrl em enviarParaPagamento: caminho no bucket
-  // de Storage, não uma URL pública — ver src/lib/storage.ts. Ausente/nulo é
-  // válido só quando dispensaComprovantePagamento (acima) — nesses casos o
-  // Financeiro confirma sem anexar nada.
-  comprovantePagamentoUrl?: string | null;
-  // Link de download já assinado (gerarUrlAssinada, com validade maior que
-  // o padrão — o e-mail pode ser aberto dias depois), gerado por quem chama
-  // essa função a partir do mesmo comprovantePagamentoUrl acima. Buscar a
-  // URL assinada é uma chamada de rede ao Storage — fica de fora deste
-  // módulo (só Postgres) de propósito, igual ao upload em si. Opcional:
-  // quando ausente/nula (ex: geração da URL falhou), o e-mail cai para o
-  // texto genérico "acesse a solicitação no sistema".
-  comprovanteUrlAssinada?: string | null;
+  // Obrigatória — comunicada ao solicitante por e-mail nesta mesma etapa.
+  // Não é necessariamente a data em que o status muda (o pagamento já foi
+  // lançado no banco agora), e sim uma previsão de quando ele deve
+  // efetivamente cair na conta do fornecedor/solicitante.
+  dataPrevistaPagamento: string;
 };
 
+// Primeira etapa da confirmação de pagamento pelo Financeiro: registra que
+// o pagamento foi lançado no banco e informa a data prevista ao
+// solicitante — nunca pede comprovante aqui, mesmo para os tipos que
+// exigem um (isso fica pra confirmarComprovante, a segunda etapa, abaixo).
+// Tipos que dispensam comprovante (ver dispensaComprovantePagamento) vão
+// direto para PAGO nesta função — não têm segunda etapa nenhuma; os demais
+// vão para AGUARDANDO_COMPROVANTE, esperando o Financeiro anexar o
+// comprovante depois.
 export async function registrarPagamento(
   id: string,
   atorId: string,
   input: RegistrarPagamentoInput
 ) {
-  const comprovanteTrim = input.comprovantePagamentoUrl?.trim() || null;
+  const dataPrevistaTrim = input.dataPrevistaPagamento?.trim();
+  if (!dataPrevistaTrim) {
+    throw new Error("A data prevista do pagamento é obrigatória.");
+  }
+  const dataPrevistaPagamento = new Date(dataPrevistaTrim);
 
   const [, solicitacao] = await Promise.all([
     requireFinanceiroAtor(atorId, "Só o Financeiro pode registrar um pagamento."),
@@ -1518,18 +1532,87 @@ export async function registrarPagamento(
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
-  if (!dispensaComprovantePagamento(solicitacao.tipoCompra) && !comprovanteTrim) {
-    throw new Error("O comprovante de pagamento é obrigatório.");
-  }
   if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_PAGAMENTO) {
     throw new Error(
       "Só é possível registrar o pagamento de uma solicitação que está aguardando pagamento."
     );
   }
 
+  const vaiDiretoParaPago = dispensaComprovantePagamento(solicitacao.tipoCompra);
+  const novoStatus = vaiDiretoParaPago
+    ? StatusSolicitacao.PAGO
+    : StatusSolicitacao.AGUARDANDO_COMPROVANTE;
+
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.AGUARDANDO_PAGAMENTO,
+    { status: novoStatus, dataPrevistaPagamento },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(
+    id,
+    vaiDiretoParaPago ? "pago" : "aguardando_comprovante",
+    atorId,
+    `Previsão de pagamento: ${formatarData(dataPrevistaPagamento)}.`
+  );
+
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Pagamento registrado",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) foi registrado, com previsão de ` +
+      `${formatarData(dataPrevistaPagamento)}.</p>` +
+      (vaiDiretoParaPago
+        ? "<p>Não há comprovante a anexar para esse tipo de compra.</p>"
+        : "<p>O Financeiro vai anexar o comprovante assim que disponível.</p>") +
+      linkAcessoHtml(id),
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export type ConfirmarComprovanteInput = {
+  // Caminho no bucket de Storage, não uma URL pública — ver
+  // src/lib/storage.ts. Sempre obrigatório aqui: só chega a essa etapa quem
+  // já passou por registrarPagamento acima e, portanto, é de um tipo de
+  // compra que exige comprovante (dispensaComprovantePagamento já teria
+  // levado direto a PAGO, sem essa segunda etapa).
+  comprovantePagamentoUrl: string;
+  // Mesmo esquema do link assinado em registrarPagamento — ver comentário
+  // lá.
+  comprovanteUrlAssinada?: string | null;
+};
+
+// Segunda etapa da confirmação de pagamento — só alcançável depois de
+// registrarPagamento ter deixado a solicitação em AGUARDANDO_COMPROVANTE.
+// Anexa o comprovante e conclui o fluxo (PAGO).
+export async function confirmarComprovante(
+  id: string,
+  atorId: string,
+  input: ConfirmarComprovanteInput
+) {
+  const comprovanteTrim = input.comprovantePagamentoUrl?.trim();
+  if (!comprovanteTrim) {
+    throw new Error("O comprovante de pagamento é obrigatório.");
+  }
+
+  const [, solicitacao] = await Promise.all([
+    requireFinanceiroAtor(atorId, "Só o Financeiro pode anexar o comprovante."),
+    getDb().solicitacao.findUnique({
+      where: { id },
+      include: { solicitante: true },
+    }),
+  ]);
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_COMPROVANTE,
     { status: StatusSolicitacao.PAGO, comprovantePagamentoUrl: comprovanteTrim },
     "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
@@ -1538,17 +1621,15 @@ export async function registrarPagamento(
 
   await getEmailSender().send({
     to: solicitacao.solicitante.email,
-    subject: "Pagamento registrado",
+    subject: "Comprovante de pagamento disponível",
     html:
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
-      `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
-      `(${formatarReais(solicitacao.valor)}) foi registrado.</p>` +
+      `<p>O comprovante de pagamento da sua solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) já está disponível.</p>` +
       (input.comprovanteUrlAssinada
         ? `<p><a href="${input.comprovanteUrlAssinada}">Baixar comprovante</a> ` +
           "(link válido por 7 dias).</p>"
-        : comprovanteTrim
-          ? "<p>O comprovante já está disponível na página da solicitação.</p>"
-          : "") +
+        : "<p>O comprovante já está disponível na página da solicitação.</p>") +
       linkAcessoHtml(id),
   });
 

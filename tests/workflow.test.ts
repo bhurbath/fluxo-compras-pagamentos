@@ -5,6 +5,7 @@ import type { EmailMessage } from "@/lib/email";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  confirmarComprovante,
   confirmarCompra,
   criarSolicitacao,
   designarCompradorManualmente,
@@ -13,6 +14,7 @@ import {
   enviarSolicitacao,
   listarMinhasSolicitacoes,
   listarPendentesComprador,
+  listarPendentesComprovante,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
@@ -2254,26 +2256,27 @@ describe("workflow: registrarPagamento", () => {
     setEmailSender(fake);
   });
 
-  it("registra o pagamento e transiciona para PAGO", async () => {
+  it("registra o pagamento e transiciona para AGUARDANDO_COMPROVANTE quando o tipo exige comprovante", async () => {
     const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg1");
     const financeiro = await criarUsuario("fin-pg1");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "pg1/comprovante.pdf",
+    const registrada = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
     });
 
-    expect(paga.status).toBe("PAGO");
-    expect(paga.comprovantePagamentoUrl).toBe("pg1/comprovante.pdf");
+    expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
+    expect(registrada.comprovantePagamentoUrl).toBeNull();
+    expect(registrada.dataPrevistaPagamento?.toISOString().slice(0, 10)).toBe("2026-09-30");
   });
 
-  it("lança erro se o comprovante não for informado", async () => {
+  it("lança erro se a data prevista não for informada", async () => {
     const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg2");
     const financeiro = await criarUsuario("fin-pg2");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
     await expect(
-      registrarPagamento(solicitacao.id, financeiro.id, { comprovantePagamentoUrl: "  " })
+      registrarPagamento(solicitacao.id, financeiro.id, { dataPrevistaPagamento: "  " })
     ).rejects.toThrow();
   });
 
@@ -2283,7 +2286,7 @@ describe("workflow: registrarPagamento", () => {
 
     await expect(
       registrarPagamento(solicitacao.id, naoFinanceiro.id, {
-        comprovantePagamentoUrl: "pg3/comprovante.pdf",
+        dataPrevistaPagamento: "2026-09-30",
       })
     ).rejects.toThrow();
   });
@@ -2296,7 +2299,7 @@ describe("workflow: registrarPagamento", () => {
 
     await expect(
       registrarPagamento(solicitacao.id, financeiro.id, {
-        comprovantePagamentoUrl: "pg4/comprovante.pdf",
+        dataPrevistaPagamento: "2026-09-30",
       })
     ).rejects.toThrow();
   });
@@ -2307,14 +2310,14 @@ describe("workflow: registrarPagamento", () => {
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
     await registrarPagamento(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "pg5/comprovante.pdf",
+      dataPrevistaPagamento: "2026-09-30",
     });
 
     const historico = await testDb.solicitacaoHistorico.findMany({
       where: { solicitacaoId: solicitacao.id },
       orderBy: { criadoEm: "asc" },
     });
-    expect(historico.at(-1)?.evento).toBe("pago");
+    expect(historico.at(-1)?.evento).toBe("aguardando_comprovante");
     expect(historico.at(-1)?.atorId).toBe(financeiro.id);
   });
 
@@ -2326,7 +2329,7 @@ describe("workflow: registrarPagamento", () => {
     enviarSpy.mockClear();
 
     await registrarPagamento(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "pg6/comprovante.pdf",
+      dataPrevistaPagamento: "2026-09-30",
     });
 
     expect(enviarSpy).toHaveBeenCalledWith(
@@ -2334,26 +2337,110 @@ describe("workflow: registrarPagamento", () => {
     );
   });
 
-  it("dispensa o comprovante quando o tipo de compra exige previsão de chegada (ex.: Mercado Livre)", async () => {
+  it("vai direto para PAGO quando o tipo de compra exige previsão de chegada (ex.: Mercado Livre)", async () => {
     const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg7", {
       exigePrevisaoChegada: true,
     });
     const financeiro = await criarUsuario("fin-pg7");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
 
     expect(paga.status).toBe("PAGO");
     expect(paga.comprovantePagamentoUrl).toBeNull();
   });
+});
 
-  it("continua exigindo o comprovante para tipos de compra que não exigem previsão de chegada", async () => {
-    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("pg8");
-    const financeiro = await criarUsuario("fin-pg8");
+describe("workflow: confirmarComprovante", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  async function criarSolicitacaoAguardandoComprovante(sufixo: string) {
+    const { solicitacao, solicitante } = await criarSolicitacaoAguardandoPagamento(sufixo);
+    const financeiro = await criarUsuario(`fin-${sufixo}`);
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const registrada = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+    return { solicitacao: registrada, solicitante, financeiro };
+  }
+
+  it("anexa o comprovante e transiciona para PAGO", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc1");
+
+    const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "cc1/comprovante.pdf",
+    });
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrl).toBe("cc1/comprovante.pdf");
+  });
+
+  it("lança erro se o comprovante não for informado", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc2");
+
+    await expect(
+      confirmarComprovante(solicitacao.id, financeiro.id, { comprovantePagamentoUrl: "  " })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem confirma não é do Financeiro", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoComprovante("cc3");
+    const naoFinanceiro = await criarUsuario("naofin-cc3");
+
+    await expect(
+      confirmarComprovante(solicitacao.id, naoFinanceiro.id, {
+        comprovantePagamentoUrl: "cc3/comprovante.pdf",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se a solicitação não está aguardando comprovante", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("cc4");
+    const financeiro = await criarUsuario("fin-cc4");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    await expect(registrarPagamento(solicitacao.id, financeiro.id, {})).rejects.toThrow(
-      /comprovante/
+    await expect(
+      confirmarComprovante(solicitacao.id, financeiro.id, {
+        comprovantePagamentoUrl: "cc4/comprovante.pdf",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao confirmar o comprovante", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc5");
+
+    await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "cc5/comprovante.pdf",
+    });
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("pago");
+    expect(historico.at(-1)?.atorId).toBe(financeiro.id);
+  });
+
+  it("notifica o solicitante por e-mail", async () => {
+    const { solicitacao, solicitante, financeiro } =
+      await criarSolicitacaoAguardandoComprovante("cc6");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrl: "cc6/comprovante.pdf",
+    });
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: solicitante.email })
     );
   });
 });
@@ -2377,6 +2464,50 @@ describe("workflow: listarPendentesPagamento", () => {
     await confirmarCompra(solicitacao.id, comprador.id);
 
     const pendentes = await listarPendentesPagamento();
+
+    expect(pendentes).toHaveLength(0);
+  });
+});
+
+describe("workflow: listarPendentesComprovante", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("lista solicitações aguardando comprovante", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("lc1");
+    const financeiro = await criarUsuario("fin-lc1");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+
+    const pendentes = await listarPendentesComprovante();
+
+    expect(pendentes.map((s) => s.id)).toEqual([solicitacao.id]);
+  });
+
+  it("não lista solicitações em outros status", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("lc2");
+
+    const pendentes = await listarPendentesComprovante();
+
+    expect(pendentes).toHaveLength(0);
+    expect(solicitacao.status).toBe("AGUARDANDO_PAGAMENTO");
+  });
+
+  it("não lista solicitações já pagas (tipo que dispensa comprovante)", async () => {
+    const { solicitacao } = await criarSolicitacaoAguardandoPagamento("lc3", {
+      exigePrevisaoChegada: true,
+    });
+    const financeiro = await criarUsuario("fin-lc3");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+
+    const pendentes = await listarPendentesComprovante();
 
     expect(pendentes).toHaveLength(0);
   });
@@ -2477,7 +2608,7 @@ describe("workflow: listarPendentesComprador", () => {
     const financeiro = await criarUsuario("fin-pc4b");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
     await registrarPagamento(solicitacao.id, financeiro.id, {
-      comprovantePagamentoUrl: "pc4b/comprovante.pdf",
+      dataPrevistaPagamento: "2026-09-30",
     });
 
     const pendentes = await listarPendentesComprador(comprador.id);
@@ -3261,7 +3392,9 @@ describe("workflow: RDV", () => {
     const financeiro = await criarUsuario("fin-rdv7");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
 
     expect(paga.status).toBe("PAGO");
     expect(paga.comprovantePagamentoUrl).toBeNull();
@@ -3420,7 +3553,9 @@ describe("workflow: Caixa Interno", () => {
     const financeiro = await criarUsuario("fin-ci6");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
 
     expect(paga.status).toBe("PAGO");
     expect(paga.comprovantePagamentoUrl).toBeNull();
@@ -3569,7 +3704,9 @@ describe("workflow: Recarga ONFLY/Fundo Fixo", () => {
     const financeiro = await criarUsuario("fin-ff6");
     await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
 
-    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {});
+    const paga = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
 
     expect(paga.status).toBe("PAGO");
     expect(paga.comprovantePagamentoUrl).toBeNull();
