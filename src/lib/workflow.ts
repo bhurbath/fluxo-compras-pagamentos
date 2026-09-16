@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import { paraDecimal } from "@/lib/decimal";
 import { getEmailSender } from "@/lib/email";
-import { formatarData, formatarReais } from "@/lib/format";
+import { formatarDataCalendario, formatarReais } from "@/lib/format";
 import { FormaPagamento, MetodoPagamento, Prisma, StatusSolicitacao } from "@prisma/client";
 
 export async function obterSolicitacao(id: string) {
@@ -1226,7 +1226,7 @@ export async function confirmarCompra(
       `<p>A compra da sua solicitação "${solicitacao.descricao}" ` +
       `(${formatarReais(solicitacao.valor)}) foi confirmada.</p>` +
       (previsaoChegada
-        ? `<p>Previsão de chegada: ${formatarData(previsaoChegada)}.</p>`
+        ? `<p>Previsão de chegada: ${formatarDataCalendario(previsaoChegada)}.</p>`
         : "<p>Em breve o pagamento será processado.</p>") +
       linkAcessoHtml(id),
   });
@@ -1564,7 +1564,7 @@ export async function registrarPagamento(
     id,
     vaiDiretoParaPago ? "pago" : "aguardando_comprovante",
     atorId,
-    `Previsão de pagamento: ${formatarData(dataPrevistaPagamento)}.`
+    `Previsão de pagamento: ${formatarDataCalendario(dataPrevistaPagamento)}.`
   );
 
   await getEmailSender().send({
@@ -1574,7 +1574,7 @@ export async function registrarPagamento(
       `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
       `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
       `(${formatarReais(solicitacao.valor)}) foi registrado, com previsão de ` +
-      `${formatarData(dataPrevistaPagamento)}.</p>` +
+      `${formatarDataCalendario(dataPrevistaPagamento)}.</p>` +
       (vaiDiretoParaPago
         ? "<p>Não há comprovante a anexar para esse tipo de compra.</p>"
         : "<p>O Financeiro vai anexar o comprovante assim que disponível.</p>") +

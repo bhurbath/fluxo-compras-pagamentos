@@ -1,4 +1,4 @@
-import { formatarData, formatarReais } from "@/lib/format";
+import { formatarData, formatarDataCalendario, formatarReais } from "@/lib/format";
 import type { obterSolicitacao } from "@/lib/workflow";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 import { StatusPill } from "./status-pill";
@@ -125,19 +125,19 @@ export function DetalhesSolicitacao({
         {solicitacao.dataVencimento && (
           <div>
             <dt className="muted">Data de vencimento</dt>
-            <dd>{solicitacao.dataVencimento.toLocaleDateString("pt-BR")}</dd>
+            <dd>{formatarDataCalendario(solicitacao.dataVencimento)}</dd>
           </div>
         )}
         {solicitacao.dataDespesa && (
           <div>
             <dt className="muted">Data da despesa</dt>
-            <dd>{formatarData(solicitacao.dataDespesa)}</dd>
+            <dd>{formatarDataCalendario(solicitacao.dataDespesa)}</dd>
           </div>
         )}
         {solicitacao.dataRdv && (
           <div>
             <dt className="muted">Data da RDV</dt>
-            <dd>{formatarData(solicitacao.dataRdv)}</dd>
+            <dd>{formatarDataCalendario(solicitacao.dataRdv)}</dd>
           </div>
         )}
         {solicitacao.numeroRdv && (
@@ -226,7 +226,7 @@ export function DetalhesSolicitacao({
         {solicitacao.previsaoChegada && (
           <div>
             <dt className="muted">Previsão de chegada</dt>
-            <dd>{formatarData(solicitacao.previsaoChegada)}</dd>
+            <dd>{formatarDataCalendario(solicitacao.previsaoChegada)}</dd>
           </div>
         )}
         {solicitacao.notaFiscalUrls.length > 0 && (
@@ -281,7 +281,7 @@ export function DetalhesSolicitacao({
         {solicitacao.dataPrevistaPagamento && (
           <div>
             <dt className="muted">Data prevista do pagamento</dt>
-            <dd>{formatarData(solicitacao.dataPrevistaPagamento)}</dd>
+            <dd>{formatarDataCalendario(solicitacao.dataPrevistaPagamento)}</dd>
           </div>
         )}
         {solicitacao.comprovantePagamentoUrls.length > 0 && (

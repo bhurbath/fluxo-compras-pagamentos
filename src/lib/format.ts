@@ -23,6 +23,23 @@ export function formatarData(data: Date): string {
   });
 }
 
+// Para campos que são só uma data de calendário (dataVencimento, dataRdv,
+// dataDespesa, previsaoChegada, dataPrevistaPagamento — todos vindos de um
+// <input type="date">, guardados como meia-noite UTC do dia escolhido, sem
+// nenhum horário real associado) — nunca use formatarData nesses: converter
+// meia-noite UTC para America/Sao_Paulo (UTC-3) sempre volta um dia (ex.:
+// 2026-09-18T00:00:00Z vira 17/09 em Brasília), mostrando uma data errada.
+// Lê os componentes em UTC para sempre bater com o dia digitado, não com o
+// fuso de quem está vendo a tela. Diferente de formatarData(criadoEm), que
+// converte de propósito: criadoEm é um instante real, não uma data pura, e
+// mostrar em horário de Brasília é o comportamento certo ali.
+export function formatarDataCalendario(data: Date): string {
+  return data.toLocaleDateString("pt-BR", {
+    dateStyle: "short",
+    timeZone: "UTC",
+  });
+}
+
 // yyyy-mm-dd (o formato de <input type="date">) → início ou fim do dia
 // local, validado. Retorna undefined para vazio, null para uma data
 // inválida (ex: query string adulterada) — o chamador decide o que fazer

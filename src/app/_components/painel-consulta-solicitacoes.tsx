@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatarReais, formatarData, formatarDataHora } from "@/lib/format";
+import { formatarReais, formatarDataCalendario, formatarDataHora } from "@/lib/format";
 import { STATUS_LEGIVEL } from "../solicitacoes/_components/status-legivel";
 import { StatusPill } from "../solicitacoes/_components/status-pill";
 
@@ -134,7 +134,7 @@ export function PainelConsultaSolicitacoes({
                     <tr key={s.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{formatarDataHora(s.criadoEm)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
-                        {s.dataVencimento ? formatarData(s.dataVencimento) : "—"}
+                        {s.dataVencimento ? formatarDataCalendario(s.dataVencimento) : "—"}
                       </td>
                       <td>{s.descricao}</td>
                       <td>{s.solicitante.nome}</td>
