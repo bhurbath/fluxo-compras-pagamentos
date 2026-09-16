@@ -88,7 +88,11 @@ model TipoCompra {
   // Quando true, a designação de comprador (ver designarComprador em
   // workflow.ts) pula a matriz de comprador e a designação manual: o
   // comprador é sempre o próprio solicitante, já que é ele quem vai
-  // executar a contratação (ex: serviços por departamento).
+  // executar a contratação (ex: serviços por departamento). Também exige
+  // uma data de vencimento (campo Solicitacao.dataVencimento, abaixo) com
+  // pelo menos alguns dias úteis de prazo a partir da criação da
+  // solicitação — ver DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE em
+  // workflow.ts.
   compradorEhSolicitante Boolean @default(false)
 
   // Quando true, o formulário de solicitação muda inteiramente: só pede
@@ -339,8 +343,13 @@ model Solicitacao {
   cotacaoUrl                String?
 
   // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria escolhida
-  // pelo solicitante, nº do pedido opcional, e data de vencimento — nenhum
-  // dos três existe fora desse tipo de solicitação.
+  // pelo solicitante e nº do pedido opcional — nenhum dos dois existe fora
+  // desse tipo de solicitação. dataVencimento (abaixo) também é exclusivo
+  // de Despesa de Pessoal originalmente, mas é reaproveitado por Recarga
+  // ONFLY/Fundo Fixo (TipoCompra.fundoFixo) e por "Compras pelo
+  // solicitante" (TipoCompra.compradorEhSolicitante) — nesse último, com
+  // prazo mínimo de dias úteis a partir da criação da solicitação (ver
+  // DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE em workflow.ts).
   categoriaDespesaPessoalId String?
   categoriaDespesaPessoal   CategoriaDespesaPessoal? @relation(fields: [categoriaDespesaPessoalId], references: [id], onDelete: Restrict)
   numeroPedido              String?

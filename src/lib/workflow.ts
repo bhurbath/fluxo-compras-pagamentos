@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { paraDecimal } from "@/lib/decimal";
+import { adicionarDiasUteis } from "@/lib/dias-uteis";
 import { getEmailSender } from "@/lib/email";
 import { formatarDataCalendario, formatarReais } from "@/lib/format";
 import { FormaPagamento, MetodoPagamento, Prisma, StatusSolicitacao } from "@prisma/client";
@@ -65,7 +66,12 @@ export type CriarSolicitacaoInput = {
   dadosPagamento?: string | null;
   fornecedorDocumento?: string | null;
   // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria e
-  // vencimento obrigatórios, nº do pedido opcional.
+  // vencimento obrigatórios, nº do pedido opcional. dataVencimento também é
+  // reaproveitado por Recarga ONFLY/Fundo Fixo (ver comentário mais abaixo)
+  // e por "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante)
+  // — nesse último, validarCriarSolicitacao exige pelo menos
+  // DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE dias úteis de prazo a
+  // partir de agora.
   categoriaDespesaPessoalId?: string | null;
   numeroPedido?: string | null;
   dataVencimento?: string | null;
@@ -104,6 +110,14 @@ const CAMPOS_OBRIGATORIOS: {
   { chave: "tipoCompraId", mensagem: "O tipo de compra é obrigatório." },
 ];
 
+// Prazo mínimo de vencimento para "Compras pelo solicitante" (ver
+// TipoCompra.compradorEhSolicitante) — só dias úteis (sem calendário de
+// feriados por enquanto, ver adicionarDiasUteis). Exportado porque as
+// páginas de criação/edição também usam pra calcular o `min` do
+// <input type="date"> (ver CamposSolicitacao) — mesma fonte de verdade que
+// essa validação, pra nunca sair de sincronia.
+export const DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE = 5;
+
 // Só exigidos fora de uma despesa de pessoal (ver TipoCompra.despesaPessoal
 // e validarCriarSolicitacao) — nesse tipo o formulário nem os mostra.
 const CAMPOS_OBRIGATORIOS_PADRAO: {
@@ -124,6 +138,7 @@ function validarCriarSolicitacao(
     rdv: boolean;
     caixaInterno: boolean;
     fundoFixo: boolean;
+    compradorEhSolicitante: boolean;
   }
 ): void {
   // RDV e Fundo Fixo não coletam descrição no formulário (ver
@@ -255,6 +270,27 @@ function validarCriarSolicitacao(
   ) {
     throw new Error("A forma de pagamento é obrigatória.");
   }
+  // "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante)
+  // passa a exigir uma data de vencimento com pelo menos
+  // DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE dias úteis de prazo a
+  // partir de agora — que é, na prática, a data de criação da
+  // solicitação: para criarSolicitacao esse "agora" é o mesmo instante
+  // que vai virar criadoEm; para editarSolicitacao (correção após
+  // rejeição) usa o momento da edição, não o criadoEm original — mais
+  // simples e ainda seguro (nunca deixa passar um vencimento vencido).
+  if (tipoCompra.compradorEhSolicitante) {
+    if (!input.dataVencimento?.trim()) {
+      throw new Error("A data de vencimento é obrigatória.");
+    }
+    const dataVencimento = new Date(input.dataVencimento);
+    const minimo = adicionarDiasUteis(new Date(), DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE);
+    if (dataVencimento < minimo) {
+      throw new Error(
+        `A data de vencimento precisa ser pelo menos ${DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE} ` +
+          "dias úteis após a data de criação da solicitação."
+      );
+    }
+  }
   if (input.semCompra) {
     if (!input.notaFiscalUrls?.length) {
       throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
@@ -330,6 +366,7 @@ type TipoCompraFlags = {
   rdv: boolean;
   caixaInterno: boolean;
   fundoFixo: boolean;
+  compradorEhSolicitante: boolean;
 };
 
 // Despesa de pessoal, RDV, Caixa Interno e Fundo Fixo nunca passam por
@@ -376,8 +413,15 @@ function autoAprovado(tipoCompra: {
 // — o servidor decide, não o cliente (o campo nem aparece no formulário
 // nesse caso, mas mesmo que viesse algo seria ignorado).
 function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoCompraFlags) {
-  const { despesaPessoal, dispensaFornecedorForma, empresaFixaId, rdv, caixaInterno, fundoFixo } =
-    tipoCompra;
+  const {
+    despesaPessoal,
+    dispensaFornecedorForma,
+    empresaFixaId,
+    rdv,
+    caixaInterno,
+    fundoFixo,
+    compradorEhSolicitante,
+  } = tipoCompra;
   const pulaCompra = semEtapaDeCompra(tipoCompra);
   // Diferente de despesaPessoal/rdv/fundoFixo, Caixa Interno continua
   // coletando centro de custo/resultado/conta contábil — só esses três
@@ -426,7 +470,9 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     categoriaDespesaPessoalId: despesaPessoal ? input.categoriaDespesaPessoalId?.trim() || null : null,
     numeroPedido: despesaPessoal ? input.numeroPedido?.trim() || null : null,
     dataVencimento:
-      (despesaPessoal || fundoFixo) && input.dataVencimento ? new Date(input.dataVencimento) : null,
+      (despesaPessoal || fundoFixo || compradorEhSolicitante) && input.dataVencimento
+        ? new Date(input.dataVencimento)
+        : null,
     valorReembolsar: rdv ? input.valorReembolsar?.trim() || null : null,
     valorCartaoOnfly: rdv ? input.valorCartaoOnfly?.trim() || null : null,
     dataRdv: rdv && input.dataRdv ? new Date(input.dataRdv) : null,

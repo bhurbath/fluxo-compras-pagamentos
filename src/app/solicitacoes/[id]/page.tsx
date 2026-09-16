@@ -26,10 +26,11 @@ import { PainelRegistrarPagamento } from "../_components/painel-registrar-pagame
 import { PainelConfirmarComprovante } from "../_components/painel-confirmar-comprovante";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { obterSolicitacao } from "@/lib/workflow";
+import { DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE, obterSolicitacao } from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
 import { gerarUrlAssinada } from "@/lib/storage";
+import { adicionarDiasUteis } from "@/lib/dias-uteis";
 
 export default async function SolicitacaoDetalhePage({
   params,
@@ -115,6 +116,17 @@ export default async function SolicitacaoDetalhePage({
   // visualização de uma solicitação que não está rejeitada.
   const listasParaEdicao = podeEditarEReenviar ? await listarListasSolicitacao() : null;
 
+  // Ver comentário em CamposSolicitacao — usado só como `min` do
+  // <input type="date"> de "Compras pelo solicitante"; calculado a partir
+  // de agora, não da criação original da solicitação (corrigir e reenviar
+  // já é, por natureza, um momento posterior ao criadoEm original).
+  const dataVencimentoMinima = adicionarDiasUteis(
+    new Date(),
+    DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE
+  )
+    .toISOString()
+    .slice(0, 10);
+
   const funcionarios = podeDesignarComprador ? await listarFuncionarios() : null;
 
   // Independentes entre si (URLs assinadas de vários anexos) — cada uma é
@@ -166,6 +178,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacao={solicitacao}
             listas={listasParaEdicao}
             action={editarEReenviarAction}
+            dataVencimentoMinima={dataVencimentoMinima}
           />
         )}
 

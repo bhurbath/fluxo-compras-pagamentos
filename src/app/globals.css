@@ -492,6 +492,20 @@ a {
     display: none;
   }
 
+  /* "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante) —
+     único campo extra num formulário por outro lado normal (aprovação,
+     comprador, etc.), por isso só esconde/mostra um campo dentro de
+     .campos-padrao em vez de trocar o formulário inteiro como despesa de
+     pessoal/RDV/Caixa Interno/Fundo Fixo acima. */
+  .campo-data-vencimento-comprador-solicitante {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-comprador-solicitante]:checked)
+    .campo-data-vencimento-comprador-solicitante {
+    display: flex;
+  }
+
   /* RDV (ver TipoCompra.rdv) — prestação de contas de reembolso. Diferente
      de despesa de pessoal (um wrapper div só), os campos de RDV precisam se
      intercalar com campos "padrão" (Tipo de compra, Empresa, Informações

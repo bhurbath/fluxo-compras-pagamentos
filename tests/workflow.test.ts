@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb, testDb } from "./helpers/db";
 import { setEmailSender } from "@/lib/email";
 import type { EmailMessage } from "@/lib/email";
+import { adicionarDiasUteis } from "@/lib/dias-uteis";
 import {
   aprovarNivel1,
   aprovarNivel2,
@@ -72,6 +73,7 @@ async function criarTipoCompra(
     rdv?: boolean;
     caixaInterno?: boolean;
     fundoFixo?: boolean;
+    compradorEhSolicitante?: boolean;
   } = {}
 ) {
   return testDb.tipoCompra.create({
@@ -82,6 +84,7 @@ async function criarTipoCompra(
       rdv: overrides.rdv ?? false,
       caixaInterno: overrides.caixaInterno ?? false,
       fundoFixo: overrides.fundoFixo ?? false,
+      compradorEhSolicitante: overrides.compradorEhSolicitante ?? false,
     },
   });
 }
@@ -538,6 +541,88 @@ describe("workflow: criarSolicitacao", () => {
     });
 
     expect(solicitacao.empresaId).toBe(empresaFixa.id);
+  });
+});
+
+describe("workflow: criarSolicitacao — Compras pelo solicitante (vencimento)", () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
+  async function criarBase(sufixo: string) {
+    const solicitante = await criarUsuario(`sol-${sufixo}`);
+    const departamento = await criarDepartamento(sufixo);
+    const tipo = await criarTipoCompra(`Compras pelo solicitante ${sufixo}`, {
+      compradorEhSolicitante: true,
+    });
+    const campos = await criarCamposObrigatorios(sufixo);
+    return { solicitante, departamento, tipo, campos };
+  }
+
+  it("exige data de vencimento", async () => {
+    const { solicitante, departamento, tipo, campos } = await criarBase("cs1");
+
+    await expect(
+      criarSolicitacao({
+        solicitanteId: solicitante.id,
+        departamentoId: departamento.id,
+        tipoCompraId: tipo.id,
+        descricao: "Assinatura de software",
+        valor: "500",
+        ...campos,
+      })
+    ).rejects.toThrow(/vencimento/);
+  });
+
+  it("rejeita uma data de vencimento com menos de 5 dias úteis de prazo", async () => {
+    const { solicitante, departamento, tipo, campos } = await criarBase("cs2");
+    const cedoDemais = adicionarDiasUteis(new Date(), 4).toISOString().slice(0, 10);
+
+    await expect(
+      criarSolicitacao({
+        solicitanteId: solicitante.id,
+        departamentoId: departamento.id,
+        tipoCompraId: tipo.id,
+        descricao: "Assinatura de software",
+        valor: "500",
+        dataVencimento: cedoDemais,
+        ...campos,
+      })
+    ).rejects.toThrow(/dias úteis/);
+  });
+
+  it("aceita uma data de vencimento com exatamente 5 dias úteis de prazo", async () => {
+    const { solicitante, departamento, tipo, campos } = await criarBase("cs3");
+    const noLimite = adicionarDiasUteis(new Date(), 5).toISOString().slice(0, 10);
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Assinatura de software",
+      valor: "500",
+      dataVencimento: noLimite,
+      ...campos,
+    });
+
+    expect(solicitacao.dataVencimento?.toISOString().slice(0, 10)).toBe(noLimite);
+  });
+
+  it("aceita uma data de vencimento mais distante que o mínimo", async () => {
+    const { solicitante, departamento, tipo, campos } = await criarBase("cs4");
+    const bemAFrente = adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10);
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Assinatura de software",
+      valor: "500",
+      dataVencimento: bemAFrente,
+      ...campos,
+    });
+
+    expect(solicitacao.dataVencimento?.toISOString().slice(0, 10)).toBe(bemAFrente);
   });
 });
 
@@ -1605,6 +1690,10 @@ describe("workflow: designarComprador (automático)", () => {
       tipoCompraId: tipo.id,
       descricao: "Compra de teste",
       valor: "500",
+      // compradorEhSolicitante agora também exige dataVencimento (ver
+      // validarCriarSolicitacao) — irrelevante para o que este teste
+      // verifica, só precisa ser uma data válida bem à frente.
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
       ...campos,
     });
     const enviada = await enviarSolicitacao(rascunho.id);
@@ -1629,6 +1718,7 @@ describe("workflow: designarComprador (automático)", () => {
       tipoCompraId: tipo.id,
       descricao: "Compra de teste",
       valor: "500",
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
       ...campos,
     });
     const enviada = await enviarSolicitacao(rascunho.id);
@@ -1654,6 +1744,7 @@ describe("workflow: designarComprador (automático)", () => {
       tipoCompraId: tipo.id,
       descricao: "Compra de teste",
       valor: "500",
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
       ...campos,
     });
     const enviada = await enviarSolicitacao(rascunho.id);
@@ -1688,6 +1779,7 @@ describe("workflow: designarComprador (automático)", () => {
       tipoCompraId: tipo.id,
       descricao: "Compra de teste",
       valor: "500",
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
       ...campos,
     });
     const enviada = await enviarSolicitacao(rascunho.id);

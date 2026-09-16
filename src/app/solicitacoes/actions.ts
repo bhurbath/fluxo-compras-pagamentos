@@ -308,6 +308,13 @@ async function parseSolicitacaoForm(
     "centroCustoId",
     "centroResultadoId",
     "contaContabilId",
+    // "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante) —
+    // name próprio (não "dataVencimento") pra não colidir no FormData com o
+    // campo de mesmo nome dentro de .despesa-pessoal-fields, que fica
+    // escondido inteiro aqui mas continua no DOM. validarCriarSolicitacao é
+    // quem decide se esse campo é obrigatório para o tipo de compra
+    // escolhido — aqui só lê o que veio, sem checar nada.
+    "dataVencimentoCompradorSolicitante",
   ]);
   exigirTodos(
     { centroCustoId: padrao.centroCustoId, centroResultadoId: padrao.centroResultadoId, contaContabilId: padrao.contaContabilId },
@@ -323,6 +330,7 @@ async function parseSolicitacaoForm(
     contaContabilId: padrao.contaContabilId,
     linkCompra: opcionais.linkCompra || null,
     cotacaoUrl,
+    dataVencimento: padrao.dataVencimentoCompradorSolicitante || null,
     semCompra,
     ...(semCompra
       ? await lerCamposSemCompra(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)

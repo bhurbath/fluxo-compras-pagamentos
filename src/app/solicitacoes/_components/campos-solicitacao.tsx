@@ -11,6 +11,7 @@ type TipoCompraLista = {
   rdv: boolean;
   caixaInterno: boolean;
   fundoFixo: boolean;
+  compradorEhSolicitante: boolean;
 };
 
 const FORMAS_PAGAMENTO = [
@@ -30,7 +31,12 @@ const FORMAS_PAGAMENTO = [
 // mesmo padrão de "sem compra" (ver .sem-compra-toggle em globals.css): cada
 // <option> de tipoCompraId carrega data-despesa-pessoal, e o seletor
 // `:has()` no CSS troca os campos "padrão" pelos de despesa de pessoal
-// conforme a opção selecionada no momento.
+// conforme a opção selecionada no momento. Mesmo padrão, mas só pra um
+// campo (não o formulário inteiro), pra "Compras pelo solicitante" (ver
+// TipoCompra.compradorEhSolicitante): data-comprador-solicitante mostra o
+// campo "Data de vencimento" dentro de .campos-padrao — esse tipo continua
+// usando o formulário normal (aprovação, comprador, etc.), só ganha esse
+// campo a mais.
 //
 // A ordem visual dos campos para RDV (Tipo de compra, Empresa, Nome do
 // colaborador, Nº da RDV, Data da RDV, Valor total, Valor a reembolsar,
@@ -58,6 +64,7 @@ export function CamposSolicitacao({
   contasContabeis,
   empresas,
   categoriasDespesaPessoal,
+  dataVencimentoMinima,
 }: {
   defaultValues?: {
     descricao?: string;
@@ -94,6 +101,13 @@ export function CamposSolicitacao({
   contasContabeis: Lista[];
   empresas: Lista[];
   categoriasDespesaPessoal: Lista[];
+  // "yyyy-mm-dd" (mesmo formato de <input type="date">) — data mínima
+  // permitida para o campo de vencimento de "Compras pelo solicitante" (ver
+  // TipoCompra.compradorEhSolicitante), calculada pela página que renderiza
+  // este componente (ver adicionarDiasUteis em src/lib/dias-uteis.ts). Só
+  // orienta o navegador (atributo `min`) — quem de fato garante a regra é
+  // validarCriarSolicitacao no servidor.
+  dataVencimentoMinima?: string;
 }) {
   return (
     <>
@@ -137,6 +151,7 @@ export function CamposSolicitacao({
               data-rdv={t.rdv ? "true" : undefined}
               data-caixa-interno={t.caixaInterno ? "true" : undefined}
               data-fundo-fixo={t.fundoFixo ? "true" : undefined}
+              data-comprador-solicitante={t.compradorEhSolicitante ? "true" : undefined}
             >
               {t.nome}
             </option>
@@ -408,6 +423,19 @@ export function CamposSolicitacao({
               </option>
             ))}
           </select>
+        </label>
+        <label className="field campo-data-vencimento-comprador-solicitante">
+          Data de vencimento
+          <input
+            name="dataVencimentoCompradorSolicitante"
+            type="date"
+            min={dataVencimentoMinima}
+            defaultValue={defaultValues?.dataVencimento ?? ""}
+            className="input-field"
+          />
+          <span className="muted-xs">
+            Precisa ser pelo menos 5 dias úteis após a data de hoje.
+          </span>
         </label>
         <label className="field">
           Link da compra (opcional)

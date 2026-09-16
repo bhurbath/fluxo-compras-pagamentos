@@ -6,10 +6,14 @@ export function PainelEdicaoReenvio({
   solicitacao,
   listas,
   action,
+  dataVencimentoMinima,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   listas: Awaited<ReturnType<typeof listarListasSolicitacao>>;
   action: (id: string, formData: FormData) => Promise<void>;
+  // Ver comentário em CamposSolicitacao — só orienta o navegador, não
+  // substitui a checagem em validarCriarSolicitacao.
+  dataVencimentoMinima?: string;
 }) {
   return (
     <div className="card-block">
@@ -50,6 +54,7 @@ export function PainelEdicaoReenvio({
             dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
           }}
           {...listas}
+          dataVencimentoMinima={dataVencimentoMinima}
         />
         <button type="submit" className="btn-primary">
           Salvar e reenviar
