@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatarReais, formatarDataCalendario, formatarDataHora } from "@/lib/format";
+import { formatarReais, formatarData, formatarDataCalendario } from "@/lib/format";
 import { STATUS_LEGIVEL } from "../solicitacoes/_components/status-legivel";
 import { StatusPill } from "../solicitacoes/_components/status-pill";
 
@@ -14,9 +14,9 @@ type SolicitacaoConsulta = {
   solicitante: { nome: string };
   departamento: { nome: string };
   tipoCompra: { nome: string };
-  comprador: { nome: string } | null;
-  // Só existe para Despesa de Pessoal e Recarga ONFLY/Fundo Fixo (ver
-  // TipoCompra.despesaPessoal/fundoFixo) — null nos demais tipos de compra.
+  // Só existe para Despesa de Pessoal, Recarga ONFLY/Fundo Fixo e Compras
+  // pelo solicitante (ver TipoCompra.despesaPessoal/fundoFixo/
+  // compradorEhSolicitante) — null nos demais tipos de compra.
   dataVencimento: Date | null;
 };
 
@@ -124,7 +124,6 @@ export function PainelConsultaSolicitacoes({
                     <th>Departamento</th>
                     <th>Tipo de compra</th>
                     <th>Valor</th>
-                    <th>Comprador</th>
                     <th>Status</th>
                     <th></th>
                   </tr>
@@ -132,7 +131,7 @@ export function PainelConsultaSolicitacoes({
                 <tbody>
                   {solicitacoes.map((s) => (
                     <tr key={s.id}>
-                      <td style={{ whiteSpace: "nowrap" }}>{formatarDataHora(s.criadoEm)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{formatarData(s.criadoEm)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
                         {s.dataVencimento ? formatarDataCalendario(s.dataVencimento) : "—"}
                       </td>
@@ -143,7 +142,6 @@ export function PainelConsultaSolicitacoes({
                       <td style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                         {formatarReais(s.valor)}
                       </td>
-                      <td>{s.comprador?.nome ?? "—"}</td>
                       <td>
                         <StatusPill status={s.status} />
                       </td>
