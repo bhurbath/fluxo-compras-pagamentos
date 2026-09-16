@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatarReais, formatarDataHora } from "@/lib/format";
+import { formatarReais, formatarData, formatarDataHora } from "@/lib/format";
 import { STATUS_LEGIVEL } from "../solicitacoes/_components/status-legivel";
 import { StatusPill } from "../solicitacoes/_components/status-pill";
 
@@ -15,6 +15,9 @@ type SolicitacaoConsulta = {
   departamento: { nome: string };
   tipoCompra: { nome: string };
   comprador: { nome: string } | null;
+  // Só existe para Despesa de Pessoal e Recarga ONFLY/Fundo Fixo (ver
+  // TipoCompra.despesaPessoal/fundoFixo) — null nos demais tipos de compra.
+  dataVencimento: Date | null;
 };
 
 // Compartilhado por /consultar (Financeiro, vê todos os departamentos) e
@@ -115,6 +118,7 @@ export function PainelConsultaSolicitacoes({
                 <thead>
                   <tr>
                     <th>Data</th>
+                    <th>Vencimento</th>
                     <th>Descrição</th>
                     <th>Solicitante</th>
                     <th>Departamento</th>
@@ -129,6 +133,9 @@ export function PainelConsultaSolicitacoes({
                   {solicitacoes.map((s) => (
                     <tr key={s.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{formatarDataHora(s.criadoEm)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {s.dataVencimento ? formatarData(s.dataVencimento) : "—"}
+                      </td>
                       <td>{s.descricao}</td>
                       <td>{s.solicitante.nome}</td>
                       <td>{s.departamento.nome}</td>
