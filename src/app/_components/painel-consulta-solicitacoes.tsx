@@ -14,10 +14,10 @@ type SolicitacaoConsulta = {
   solicitante: { nome: string };
   departamento: { nome: string };
   tipoCompra: { nome: string };
-  // Só existe para Despesa de Pessoal, Recarga ONFLY/Fundo Fixo e Compras
-  // pelo solicitante (ver TipoCompra.despesaPessoal/fundoFixo/
-  // compradorEhSolicitante) — null nos demais tipos de compra.
-  dataVencimento: Date | null;
+  // Preenchida pelo Financeiro na primeira etapa da confirmação de
+  // pagamento (ver registrarPagamento em src/lib/workflow.ts) — null até
+  // lá (ex.: enquanto ainda está aguardando aprovação/compra/pagamento).
+  dataPrevistaPagamento: Date | null;
 };
 
 // Compartilhado por /consultar (Financeiro, vê todos os departamentos) e
@@ -118,7 +118,7 @@ export function PainelConsultaSolicitacoes({
                 <thead>
                   <tr>
                     <th>Data</th>
-                    <th>Vencimento</th>
+                    <th>Data de pagamento</th>
                     <th>Descrição</th>
                     <th>Solicitante</th>
                     <th>Departamento</th>
@@ -133,7 +133,9 @@ export function PainelConsultaSolicitacoes({
                     <tr key={s.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{formatarData(s.criadoEm)}</td>
                       <td style={{ whiteSpace: "nowrap" }}>
-                        {s.dataVencimento ? formatarDataCalendario(s.dataVencimento) : "—"}
+                        {s.dataPrevistaPagamento
+                          ? formatarDataCalendario(s.dataPrevistaPagamento)
+                          : "—"}
                       </td>
                       <td>{s.descricao}</td>
                       <td>{s.solicitante.nome}</td>
