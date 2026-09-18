@@ -36,6 +36,12 @@ export type TipoCompraInput = {
   // pagamento, mas — diferente de despesaPessoal/rdv/caixaInterno — continua
   // passando pela aprovação normal de nível 1/2 (ver workflow.ts).
   fundoFixo?: boolean;
+  // Ver comentário no schema (model TipoCompra) — muda o formulário para os
+  // campos de um Adiantamento para Compras Industriais e dispensa a etapa
+  // de compra, mas — como fundoFixo — continua passando pela aprovação
+  // normal de nível 1/2 e exige comprovante de pagamento do Financeiro (ver
+  // workflow.ts).
+  adiantamentoIndustrial?: boolean;
 };
 
 export async function listarTiposCompra() {
@@ -62,6 +68,7 @@ export async function criarTipoCompra(input: TipoCompraInput) {
       rdv: input.rdv ?? false,
       caixaInterno: input.caixaInterno ?? false,
       fundoFixo: input.fundoFixo ?? false,
+      adiantamentoIndustrial: input.adiantamentoIndustrial ?? false,
     },
   });
 }
@@ -80,6 +87,7 @@ export async function atualizarTipoCompra(id: string, input: TipoCompraInput) {
       rdv: input.rdv ?? false,
       caixaInterno: input.caixaInterno ?? false,
       fundoFixo: input.fundoFixo ?? false,
+      adiantamentoIndustrial: input.adiantamentoIndustrial ?? false,
     },
   });
 }

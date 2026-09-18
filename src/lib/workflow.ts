@@ -53,7 +53,10 @@ export type CriarSolicitacaoInput = {
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
   // Cotação/orçamento opcional, para apoiar a decisão do aprovador — ver
-  // comentário no schema (model Solicitacao).
+  // comentário no schema (model Solicitacao). Também disponível (opcional)
+  // em Adiantamento para Compras Industriais (ver
+  // TipoCompra.adiantamentoIndustrial), mesmo esse pulando a etapa de
+  // compra — os demais tipos que pulam a etapa de compra não o coletam.
   cotacaoUrl?: string | null;
   // Encargos, taxas e outras despesas sem etapa de compra (ver
   // enviarDiretoParaPagamento, abaixo) — quando true, a documentação e os
@@ -64,14 +67,18 @@ export type CriarSolicitacaoInput = {
   notaFiscalUrls?: string[];
   metodoPagamento?: MetodoPagamento | null;
   dadosPagamento?: string | null;
+  // Também obrigatório (CNPJ) em Adiantamento para Compras Industriais (ver
+  // TipoCompra.adiantamentoIndustrial), fora do fluxo "sem compra" normal.
   fornecedorDocumento?: string | null;
   // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria e
   // vencimento obrigatórios, nº do pedido opcional. dataVencimento também é
-  // reaproveitado por Recarga ONFLY/Fundo Fixo (ver comentário mais abaixo)
-  // e por "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante)
-  // — nesse último, validarCriarSolicitacao exige pelo menos
+  // reaproveitado por Recarga ONFLY/Fundo Fixo (ver comentário mais abaixo),
+  // por "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante) —
+  // nesse último, validarCriarSolicitacao exige pelo menos
   // DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE dias úteis de prazo a
-  // partir de agora.
+  // partir de agora — e por Adiantamento para Compras Industriais (ver
+  // TipoCompra.adiantamentoIndustrial), sem esse prazo mínimo. numeroPedido
+  // também é obrigatório (não opcional) nesse último.
   categoriaDespesaPessoalId?: string | null;
   numeroPedido?: string | null;
   dataVencimento?: string | null;
@@ -139,6 +146,7 @@ function validarCriarSolicitacao(
     caixaInterno: boolean;
     fundoFixo: boolean;
     compradorEhSolicitante: boolean;
+    adiantamentoIndustrial: boolean;
   }
 ): void {
   // RDV e Fundo Fixo não coletam descrição no formulário (ver
@@ -259,6 +267,23 @@ function validarCriarSolicitacao(
     return;
   }
 
+  // Adiantamento para Compras Industriais — sem o prazo mínimo de dias
+  // úteis de compradorEhSolicitante (ver comentário no schema); fornecedor
+  // e empresa já são exigidos genericamente acima. Cotação é opcional, não
+  // checada aqui.
+  if (tipoCompra.adiantamentoIndustrial) {
+    if (!input.dataVencimento?.trim()) {
+      throw new Error("A data de vencimento é obrigatória.");
+    }
+    if (!input.numeroPedido?.trim()) {
+      throw new Error("O nº do pedido é obrigatório.");
+    }
+    if (!input.fornecedorDocumento?.trim()) {
+      throw new Error("O CNPJ do fornecedor é obrigatório.");
+    }
+    return;
+  }
+
   for (const { chave, mensagem } of CAMPOS_OBRIGATORIOS_PADRAO) {
     if (!String(input[chave] ?? "").trim()) {
       throw new Error(mensagem);
@@ -367,31 +392,42 @@ type TipoCompraFlags = {
   caixaInterno: boolean;
   fundoFixo: boolean;
   compradorEhSolicitante: boolean;
+  adiantamentoIndustrial: boolean;
 };
 
-// Despesa de pessoal, RDV, Caixa Interno e Fundo Fixo nunca passam por
-// comprador nem etapa de compra, indo direto para o Financeiro assim que
-// aprovadas (ver mapCamposSolicitacao e processarEnvioPagamento) — mas só os
-// três primeiros pulam a APROVAÇÃO em si (ver autoAprovado, abaixo); Fundo
-// Fixo continua exigindo a aprovação normal de nível 1/2 por alçada, só não
-// tem comprador. Os quatro têm, porém, conjuntos de campos bem diferentes
-// entre si (ex.: Caixa Interno mantém centro de custo/resultado/conta
-// contábil, os outros não), então essa combinação só vale pra essa decisão
-// de fluxo, não pra mapear os campos abaixo.
+// Despesa de pessoal, RDV, Caixa Interno, Fundo Fixo e Adiantamento para
+// Compras Industriais nunca passam por comprador nem etapa de compra,
+// indo direto para o Financeiro assim que aprovadas (ver
+// mapCamposSolicitacao e processarEnvioPagamento) — mas só os três
+// primeiros pulam a APROVAÇÃO em si (ver autoAprovado, abaixo); Fundo Fixo
+// e Adiantamento para Compras Industriais continuam exigindo a aprovação
+// normal de nível 1/2 por alçada, só não têm comprador. Esses cinco têm,
+// porém, conjuntos de campos bem diferentes entre si (ex.: Caixa Interno
+// mantém centro de custo/resultado/conta contábil, os outros não), então
+// essa combinação só vale pra essa decisão de fluxo, não pra mapear os
+// campos abaixo.
 function semEtapaDeCompra(tipoCompra: {
   despesaPessoal: boolean;
   rdv: boolean;
   caixaInterno: boolean;
   fundoFixo: boolean;
+  adiantamentoIndustrial: boolean;
 }): boolean {
-  return tipoCompra.despesaPessoal || tipoCompra.rdv || tipoCompra.caixaInterno || tipoCompra.fundoFixo;
+  return (
+    tipoCompra.despesaPessoal ||
+    tipoCompra.rdv ||
+    tipoCompra.caixaInterno ||
+    tipoCompra.fundoFixo ||
+    tipoCompra.adiantamentoIndustrial
+  );
 }
 
 // Usado só por resolverEstadoInicial — o subconjunto de semEtapaDeCompra que
 // também pula a aprovação de nível 1/2 (RDV já vem aprovada pelo gestor em
 // outro sistema; despesa de pessoal e Caixa Interno são só processamento,
-// sem decisão de negócio a aprovar). Fundo Fixo fica de fora de propósito:
-// passa pela mesma alçada de qualquer solicitação normal.
+// sem decisão de negócio a aprovar). Fundo Fixo e Adiantamento para Compras
+// Industriais ficam de fora de propósito: passam pela mesma alçada de
+// qualquer solicitação normal.
 function autoAprovado(tipoCompra: {
   despesaPessoal: boolean;
   rdv: boolean;
@@ -421,12 +457,14 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     caixaInterno,
     fundoFixo,
     compradorEhSolicitante,
+    adiantamentoIndustrial,
   } = tipoCompra;
   const pulaCompra = semEtapaDeCompra(tipoCompra);
-  // Diferente de despesaPessoal/rdv/fundoFixo, Caixa Interno continua
-  // coletando centro de custo/resultado/conta contábil — só esses três
-  // campos precisam de uma condição própria, não a combinação acima.
-  const semClassificacaoContabil = despesaPessoal || rdv || fundoFixo;
+  // Diferente de despesaPessoal/rdv/fundoFixo/adiantamentoIndustrial, Caixa
+  // Interno continua coletando centro de custo/resultado/conta contábil —
+  // só esses quatro precisam de uma condição própria, não a combinação
+  // acima.
+  const semClassificacaoContabil = despesaPessoal || rdv || fundoFixo || adiantamentoIndustrial;
   const semCompra = pulaCompra || (input.semCompra ?? false);
   const empresaId = empresaFixaId ?? input.empresaId;
   if (!empresaId) {
@@ -461,16 +499,26 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     empresaId,
     linkCompra: pulaCompra ? null : input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
-    cotacaoUrl: pulaCompra ? null : input.cotacaoUrl?.trim() || null,
+    // Adiantamento para Compras Industriais também coleta cotação, apesar
+    // de pular a etapa de compra — os demais tipos que pulam essa etapa
+    // não a coletam.
+    cotacaoUrl: pulaCompra && !adiantamentoIndustrial ? null : input.cotacaoUrl?.trim() || null,
     semCompra,
     notaFiscalUrls: semCompra ? (input.notaFiscalUrls ?? []) : [],
     metodoPagamento: !pulaCompra && semCompra ? input.metodoPagamento ?? null : null,
     dadosPagamento: semCompra ? input.dadosPagamento?.trim() || null : null,
-    fornecedorDocumento: !pulaCompra && semCompra ? input.fornecedorDocumento?.trim() || null : null,
+    // Adiantamento para Compras Industriais também coleta CNPJ, fora do
+    // fluxo "sem compra" (semCompra) normal.
+    fornecedorDocumento:
+      adiantamentoIndustrial || (!pulaCompra && semCompra)
+        ? input.fornecedorDocumento?.trim() || null
+        : null,
     categoriaDespesaPessoalId: despesaPessoal ? input.categoriaDespesaPessoalId?.trim() || null : null,
-    numeroPedido: despesaPessoal ? input.numeroPedido?.trim() || null : null,
+    numeroPedido:
+      despesaPessoal || adiantamentoIndustrial ? input.numeroPedido?.trim() || null : null,
     dataVencimento:
-      (despesaPessoal || fundoFixo || compradorEhSolicitante) && input.dataVencimento
+      (despesaPessoal || fundoFixo || compradorEhSolicitante || adiantamentoIndustrial) &&
+      input.dataVencimento
         ? new Date(input.dataVencimento)
         : null,
     valorReembolsar: rdv ? input.valorReembolsar?.trim() || null : null,
@@ -613,9 +661,10 @@ async function resolverEstadoInicial(solicitacao: {
   // solicitante ou de qual faixa de alçada o valor cairia. RDV já vem
   // aprovada pelo gestor em outro sistema; Caixa Interno é só prestação de
   // contas de uma despesa já paga. Por isso nem chega a checar
-  // pulaNivel1/alçada abaixo. Fundo Fixo NÃO entra aqui de propósito — ver
-  // autoAprovado: continua passando pela alçada normal, só não tem etapa de
-  // compra (isso é decidido depois, via solicitacao.semCompra).
+  // pulaNivel1/alçada abaixo. Fundo Fixo e Adiantamento para Compras
+  // Industriais NÃO entram aqui de propósito — ver autoAprovado: continuam
+  // passando pela alçada normal, só não têm etapa de compra (isso é
+  // decidido depois, via solicitacao.semCompra).
   if (autoAprovado(solicitacao.tipoCompra)) {
     return {
       status: StatusSolicitacao.APROVADO,

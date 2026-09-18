@@ -45,6 +45,7 @@ export default async function TiposCompraPage({
                 <th>RDV</th>
                 <th>Caixa Interno</th>
                 <th>Fundo Fixo</th>
+                <th>Adiantamento Industrial</th>
                 <th></th>
               </tr>
             </thead>
@@ -60,6 +61,7 @@ export default async function TiposCompraPage({
                   <td>{tipo.rdv ? "Sim" : "Não"}</td>
                   <td>{tipo.caixaInterno ? "Sim" : "Não"}</td>
                   <td>{tipo.fundoFixo ? "Sim" : "Não"}</td>
+                  <td>{tipo.adiantamentoIndustrial ? "Sim" : "Não"}</td>
                   <td className="flex gap-4 justify-end">
                     <Link href={`/admin/tipos-compra/${tipo.id}`} className="link">
                       Editar

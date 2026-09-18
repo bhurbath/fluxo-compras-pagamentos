@@ -12,6 +12,7 @@ type TipoCompraLista = {
   caixaInterno: boolean;
   fundoFixo: boolean;
   compradorEhSolicitante: boolean;
+  adiantamentoIndustrial: boolean;
 };
 
 const FORMAS_PAGAMENTO = [
@@ -42,20 +43,23 @@ const FORMAS_PAGAMENTO = [
 // colaborador, Nº da RDV, Data da RDV, Valor total, Valor a reembolsar,
 // Valor pago no cartão ONFLY, Informações complementares), para Caixa Interno (Tipo de compra, Empresa,
 // Descrição, Data da despesa, Valor total, Centro de custo, Centro de
-// resultado, Conta contábil, Anexo) e para Recarga ONFLY/Fundo Fixo (Tipo de
+// resultado, Conta contábil, Anexo), para Recarga ONFLY/Fundo Fixo (Tipo de
 // compra, Empresa, Data de vencimento, Valor total, Anexo, PIX para
-// depósito) é bem diferente da ordem "padrão" — em vez de duplicar campos
-// com o mesmo name (o que causaria colisão no FormData — ver comentário
-// sobre isso em actions.ts), cada campo recebe uma classe própria e a troca
-// de posição é feita via `order` (flexbox) só quando o tipo correspondente
-// está selecionado, ver globals.css. Por isso todos esses campos precisam
-// ser irmãos diretos (sem wrapper div), diferente de .campos-padrao/
-// .despesa-pessoal-fields. Centro de custo/resultado/conta contábil de
-// Caixa Interno e a data de vencimento/anexo de Fundo Fixo usam name
-// próprio (...CaixaInterno/...FundoFixo) — mesmos dados/mesma coluna, mas
-// campos HTML distintos dos equivalentes em .campos-padrao/.despesa-
-// pessoal-fields (que ficam escondidos inteiros nesses tipos), evitando a
-// mesma colisão.
+// depósito) e para Adiantamento para Compras Industriais (Tipo de compra,
+// Empresa, Fornecedor, CNPJ, Valor, Data de vencimento, Nº do pedido,
+// Descrição, Cotação) é bem diferente da ordem "padrão" — em vez de
+// duplicar campos com o mesmo name (o que causaria colisão no FormData —
+// ver comentário sobre isso em actions.ts), cada campo recebe uma classe
+// própria e a troca de posição é feita via `order` (flexbox) só quando o
+// tipo correspondente está selecionado, ver globals.css. Por isso todos
+// esses campos precisam ser irmãos diretos (sem wrapper div), diferente de
+// .campos-padrao/.despesa-pessoal-fields. Centro de custo/resultado/conta
+// contábil de Caixa Interno e a data de vencimento/anexo/nº do pedido/CNPJ/
+// cotação de Fundo Fixo e Adiantamento para Compras Industriais usam name
+// próprio (...CaixaInterno/...FundoFixo/...Adiantamento) — mesmos dados/
+// mesma coluna, mas campos HTML distintos dos equivalentes em
+// .campos-padrao/.despesa-pessoal-fields (que ficam escondidos inteiros
+// nesses tipos), evitando a mesma colisão.
 export function CamposSolicitacao({
   defaultValues,
   tiposCompra,
@@ -152,6 +156,7 @@ export function CamposSolicitacao({
               data-caixa-interno={t.caixaInterno ? "true" : undefined}
               data-fundo-fixo={t.fundoFixo ? "true" : undefined}
               data-comprador-solicitante={t.compradorEhSolicitante ? "true" : undefined}
+              data-adiantamento-industrial={t.adiantamentoIndustrial ? "true" : undefined}
             >
               {t.nome}
             </option>
@@ -361,6 +366,48 @@ export function CamposSolicitacao({
           defaultValue={defaultValues?.dadosPagamento ?? ""}
           className="input-field"
         />
+      </label>
+
+      <label className="field campo-cnpj-adiantamento">
+        CNPJ
+        <input
+          name="fornecedorDocumentoAdiantamento"
+          type="text"
+          defaultValue={defaultValues?.fornecedorDocumento ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-data-vencimento-adiantamento">
+        Data de vencimento
+        <input
+          name="dataVencimentoAdiantamento"
+          type="date"
+          defaultValue={defaultValues?.dataVencimento ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-numero-pedido-adiantamento">
+        Nº do pedido
+        <input
+          name="numeroPedidoAdiantamento"
+          type="text"
+          defaultValue={defaultValues?.numeroPedido ?? ""}
+          className="input-field"
+        />
+      </label>
+      <label className="field campo-cotacao-adiantamento">
+        Cotação/orçamento (opcional — PDF, JPG ou PNG)
+        <input
+          type="file"
+          name="cotacaoAdiantamento"
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="input-field"
+        />
+        {defaultValues?.temCotacao && (
+          <span className="muted-xs">
+            Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
+          </span>
+        )}
       </label>
 
       <div className="campos-padrao">

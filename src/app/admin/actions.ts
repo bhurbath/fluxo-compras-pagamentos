@@ -272,6 +272,7 @@ function parseTipoCompraForm(formData: FormData): TipoCompraInput {
     rdv: formData.get("rdv") === "on",
     caixaInterno: formData.get("caixaInterno") === "on",
     fundoFixo: formData.get("fundoFixo") === "on",
+    adiantamentoIndustrial: formData.get("adiantamentoIndustrial") === "on",
   };
 }
 

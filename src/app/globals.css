@@ -464,7 +464,9 @@ a {
   form:has(select[name="tipoCompraId"] option[data-despesa-pessoal]:checked) .campos-padrao,
   form:has(select[name="tipoCompraId"] option[data-rdv]:checked) .campos-padrao,
   form:has(select[name="tipoCompraId"] option[data-caixa-interno]:checked) .campos-padrao,
-  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campos-padrao {
+  form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campos-padrao,
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campos-padrao {
     display: none;
   }
 
@@ -723,6 +725,79 @@ a {
     order: -2;
   }
   form:has(select[name="tipoCompraId"] option[data-fundo-fixo]:checked) .campo-pix-deposito {
+    order: -1;
+  }
+
+  /* Adiantamento para Compras Industriais (ver
+     TipoCompra.adiantamentoIndustrial) — mesmo padrão puro-CSS de RDV/Caixa
+     Interno/Fundo Fixo acima. Data de vencimento, nº do pedido, CNPJ e
+     cotação usam name próprio (...Adiantamento) pra não colidir no FormData
+     com os campos equivalentes escondidos em .despesa-pessoal-fields/
+     .campos-padrao (ambos ficam escondidos inteiros nesse tipo). Diferente
+     de Fundo Fixo, mantém uma descrição de verdade (não gerada) e não tem
+     centro de custo/resultado/conta contábil nem forma de pagamento (por
+     isso .campos-padrao inteiro fica escondido, igual aos outros três). */
+  .campo-cnpj-adiantamento,
+  .campo-data-vencimento-adiantamento,
+  .campo-numero-pedido-adiantamento,
+  .campo-cotacao-adiantamento {
+    display: none;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-cnpj-adiantamento,
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-data-vencimento-adiantamento,
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-numero-pedido-adiantamento,
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-cotacao-adiantamento {
+    display: flex;
+  }
+
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-informacoes-complementares {
+    display: none;
+  }
+
+  /* Ordem visual pra Adiantamento para Compras Industriais: Tipo de compra,
+     Empresa, Fornecedor, CNPJ, Valor, Data de vencimento, Nº do pedido,
+     Descrição, Cotação. Mesmo raciocínio de valores negativos que as
+     ordens acima. */
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-tipo-compra {
+    order: -9;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-empresa {
+    order: -8;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-fornecedor {
+    order: -7;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-cnpj-adiantamento {
+    order: -6;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-valor {
+    order: -5;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-data-vencimento-adiantamento {
+    order: -4;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-numero-pedido-adiantamento {
+    order: -3;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-descricao {
+    order: -2;
+  }
+  form:has(select[name="tipoCompraId"] option[data-adiantamento-industrial]:checked)
+    .campo-cotacao-adiantamento {
     order: -1;
   }
 }

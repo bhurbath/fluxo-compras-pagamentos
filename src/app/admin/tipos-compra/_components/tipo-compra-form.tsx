@@ -16,6 +16,7 @@ export function TipoCompraForm({
     rdv: boolean;
     caixaInterno: boolean;
     fundoFixo: boolean;
+    adiantamentoIndustrial: boolean;
   };
   empresas: Lista[];
   action: (formData: FormData) => Promise<void>;
@@ -115,6 +116,17 @@ export function TipoCompraForm({
         É Recarga ONFLY/Fundo Fixo (formulário próprio — data de vencimento, valor total,
         PIX para depósito e anexo opcional; passa pela aprovação normal de nível 1/2, mas
         sem etapa de compra nem comprovante de pagamento do Financeiro)
+      </label>
+      <label className="field-inline">
+        <input
+          name="adiantamentoIndustrial"
+          type="checkbox"
+          defaultChecked={defaultValues?.adiantamentoIndustrial}
+        />
+        É Adiantamento para Compras Industriais (formulário próprio — fornecedor, CNPJ,
+        valor, data de vencimento, nº do pedido, descrição e cotação opcional; passa pela
+        aprovação normal de nível 1/2, sem etapa de compra, mas exige comprovante de
+        pagamento do Financeiro)
       </label>
       <button type="submit" className="btn-primary">
         {submitLabel}

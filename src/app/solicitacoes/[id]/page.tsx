@@ -215,7 +215,8 @@ export default async function SolicitacaoDetalhePage({
               solicitacao.tipoCompra.despesaPessoal ||
               solicitacao.tipoCompra.rdv ||
               solicitacao.tipoCompra.caixaInterno ||
-              solicitacao.tipoCompra.fundoFixo
+              solicitacao.tipoCompra.fundoFixo ||
+              solicitacao.tipoCompra.adiantamentoIndustrial
             }
           />
         )}

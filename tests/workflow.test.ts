@@ -74,6 +74,7 @@ async function criarTipoCompra(
     caixaInterno?: boolean;
     fundoFixo?: boolean;
     compradorEhSolicitante?: boolean;
+    adiantamentoIndustrial?: boolean;
   } = {}
 ) {
   return testDb.tipoCompra.create({
@@ -85,6 +86,7 @@ async function criarTipoCompra(
       caixaInterno: overrides.caixaInterno ?? false,
       fundoFixo: overrides.fundoFixo ?? false,
       compradorEhSolicitante: overrides.compradorEhSolicitante ?? false,
+      adiantamentoIndustrial: overrides.adiantamentoIndustrial ?? false,
     },
   });
 }
@@ -3898,5 +3900,249 @@ describe("workflow: Recarga ONFLY/Fundo Fixo", () => {
     expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
     expect(reenviada.metodoPagamento).toBeNull();
     expect(reenviada.fornecedorDocumento).toBeNull();
+  });
+});
+
+// Adiantamento para Compras Industriais (ver TipoCompra.adiantamentoIndustrial)
+// — mesmo desvio de Fundo Fixo acima (pula comprador/compra, mas continua
+// passando pela aprovação normal de nível 1/2), mas com fornecedor, CNPJ,
+// vencimento sem prazo mínimo, nº do pedido, descrição de verdade e cotação
+// opcional; diferente de Fundo Fixo/Caixa Interno, exige comprovante de
+// pagamento do Financeiro.
+async function criarSolicitacaoAdiantamentoIndustrialEnviada(
+  sufixo: string,
+  overrides: { solicitanteId?: string; responsavelId?: string; diretorId?: string; valor?: string } = {}
+) {
+  const departamento = await criarDepartamento(sufixo, {
+    responsavelId: overrides.responsavelId,
+    diretorId: overrides.diretorId,
+  });
+  const solicitante = overrides.solicitanteId
+    ? await testDb.usuario.findUniqueOrThrow({ where: { id: overrides.solicitanteId } })
+    : await criarUsuario(`sol-ai-${sufixo}`);
+  const tipo = await criarTipoCompra(`Adiantamento Industrial ${sufixo}`, {
+    adiantamentoIndustrial: true,
+  });
+  const empresa = await testDb.empresa.create({ data: { nome: `Empresa ai ${sufixo}` } });
+  const rascunho = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Adiantamento para compra industrial",
+    valor: overrides.valor ?? "500",
+    empresaId: empresa.id,
+    fornecedor: "Fornecedor Industrial Teste",
+    fornecedorDocumento: "12.345.678/0001-99",
+    dataVencimento: "2026-10-20",
+    numeroPedido: "PED-001",
+  });
+  const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante, tipo };
+}
+
+describe("workflow: Adiantamento para Compras Industriais", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("exige fornecedor, empresa, data de vencimento, nº do pedido e CNPJ, mas não exige anexo", async () => {
+    const solicitante = await criarUsuario("ai1");
+    const departamento = await criarDepartamento("ai1");
+    const tipo = await criarTipoCompra("Adiantamento Industrial ai1", {
+      adiantamentoIndustrial: true,
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa ai1" } });
+    const base = {
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Adiantamento",
+      valor: "500",
+    };
+
+    await expect(criarSolicitacao(base)).rejects.toThrow(/fornecedor/);
+    await expect(
+      criarSolicitacao({ ...base, fornecedor: "Fornecedor X" })
+    ).rejects.toThrow(/empresa/);
+    await expect(
+      criarSolicitacao({ ...base, fornecedor: "Fornecedor X", empresaId: empresa.id })
+    ).rejects.toThrow(/data de vencimento/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        fornecedor: "Fornecedor X",
+        empresaId: empresa.id,
+        dataVencimento: "2026-10-20",
+      })
+    ).rejects.toThrow(/pedido/);
+    await expect(
+      criarSolicitacao({
+        ...base,
+        fornecedor: "Fornecedor X",
+        empresaId: empresa.id,
+        dataVencimento: "2026-10-20",
+        numeroPedido: "PED-001",
+      })
+    ).rejects.toThrow(/CNPJ/);
+
+    const solicitacao = await criarSolicitacao({
+      ...base,
+      fornecedor: "Fornecedor X",
+      empresaId: empresa.id,
+      dataVencimento: "2026-10-20",
+      numeroPedido: "PED-001",
+      fornecedorDocumento: "12.345.678/0001-99",
+    });
+    expect(solicitacao.notaFiscalUrls).toEqual([]);
+  });
+
+  it("não exige o prazo mínimo de dias úteis de Compras pelo solicitante", async () => {
+    const solicitante = await criarUsuario("ai2");
+    const departamento = await criarDepartamento("ai2");
+    const tipo = await criarTipoCompra("Adiantamento Industrial ai2", {
+      adiantamentoIndustrial: true,
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa ai2" } });
+    // Vencimento amanhã — bem menos que os 5 dias úteis exigidos de
+    // compradorEhSolicitante, mas válido aqui.
+    const amanha = new Date();
+    amanha.setUTCDate(amanha.getUTCDate() + 1);
+    const amanhaStr = amanha.toISOString().slice(0, 10);
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Adiantamento urgente",
+      valor: "500",
+      fornecedor: "Fornecedor X",
+      empresaId: empresa.id,
+      dataVencimento: amanhaStr,
+      numeroPedido: "PED-002",
+      fornecedorDocumento: "12.345.678/0001-99",
+    });
+
+    expect(solicitacao.dataVencimento?.toISOString().slice(0, 10)).toBe(amanhaStr);
+  });
+
+  it("permite anexar cotação (opcional)", async () => {
+    const solicitante = await criarUsuario("ai3");
+    const departamento = await criarDepartamento("ai3");
+    const tipo = await criarTipoCompra("Adiantamento Industrial ai3", {
+      adiantamentoIndustrial: true,
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa ai3" } });
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Adiantamento",
+      valor: "500",
+      fornecedor: "Fornecedor X",
+      empresaId: empresa.id,
+      dataVencimento: "2026-10-20",
+      numeroPedido: "PED-003",
+      fornecedorDocumento: "12.345.678/0001-99",
+      cotacaoUrl: "ai3/cotacao.pdf",
+    });
+
+    expect(solicitacao.cotacaoUrl).toBe("ai3/cotacao.pdf");
+  });
+
+  it("não exige centro de custo/resultado/conta contábil nem forma de pagamento", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoAdiantamentoIndustrialEnviada("ai4");
+
+    expect(solicitacao.centroCustoId).toBeNull();
+    expect(solicitacao.centroResultadoId).toBeNull();
+    expect(solicitacao.contaContabilId).toBeNull();
+    expect(solicitacao.formaPagamento).toBeNull();
+    expect(solicitacao.semCompra).toBe(true);
+    expect(solicitacao.fornecedor).toBe("Fornecedor Industrial Teste");
+    expect(solicitacao.fornecedorDocumento).toBe("12.345.678/0001-99");
+    expect(solicitacao.numeroPedido).toBe("PED-001");
+    expect(solicitacao.descricao).toBe("Adiantamento para compra industrial");
+  });
+
+  it("passa pela aprovação normal de nível 1/2 (não é auto-aprovado)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao } = await criarSolicitacaoAdiantamentoIndustrialEnviada("ai5");
+
+    expect(solicitacao.status).toBe("ENVIADO");
+  });
+
+  it("ao ser aprovada (nível 1, sem exigir nível 2), pula direto para AGUARDANDO_PAGAMENTO sem designar comprador", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoAdiantamentoIndustrialEnviada("ai6");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("exige aprovação de nível 2 quando a alçada exigir", async () => {
+    await criarFaixa("0", "1000", false);
+    await criarFaixa("1000.01", null, true);
+    const { solicitacao, departamento } = await criarSolicitacaoAdiantamentoIndustrialEnviada(
+      "ai7",
+      { valor: "5000" }
+    );
+
+    const aguardandoNivel2 = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    expect(aguardandoNivel2.status).toBe("AGUARDANDO_NIVEL2");
+
+    const aprovada = await aprovarNivel2(solicitacao.id, departamento.diretorId);
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+  });
+
+  it("exige comprovante de pagamento do Financeiro (diferente de Fundo Fixo/Caixa Interno)", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento } = await criarSolicitacaoAdiantamentoIndustrialEnviada("ai8");
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-ai8");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+    const registrada = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-10-25",
+    });
+
+    expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
+
+    const paga = await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrls: ["ai8/comprovante.pdf"],
+    });
+
+    expect(paga.status).toBe("PAGO");
+    expect(paga.comprovantePagamentoUrls).toEqual(["ai8/comprovante.pdf"]);
+  });
+
+  it("permite ao solicitante corrigir e reenviar após recusa de pagamento, sem exigir método de pagamento nem CNPJ/CPF do fornecedor de novo", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao, departamento, solicitante } =
+      await criarSolicitacaoAdiantamentoIndustrialEnviada("ai9");
+    await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    const financeiro = await criarUsuario("fin-ai9");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Dados incompletos");
+    expect(recusada.status).toBe("PAGAMENTO_RECUSADO");
+
+    const reenviada = await reenviarParaPagamento(recusada.id, solicitante.id, {
+      notaFiscalUrls: ["ai-novo.pdf"],
+    });
+
+    expect(reenviada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(reenviada.metodoPagamento).toBeNull();
   });
 });

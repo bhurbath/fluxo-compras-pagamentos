@@ -157,6 +157,20 @@ model TipoCompra {
   // notaFiscalUrls) com outro sentido — ver mapCamposSolicitacao.
   fundoFixo Boolean @default(false)
 
+  // Quando true (Adiantamento para Compras Industriais): mesmo desvio de
+  // fundoFixo acima — passa pela aprovação normal de nível 1/2 conforme a
+  // alçada, só pula a etapa de compra/comprador (semCompra sempre true),
+  // indo direto para o Financeiro assim que aprovada. Formulário próprio:
+  // Fornecedor, CNPJ (fornecedorDocumento), Valor, Data de vencimento (sem
+  // o prazo mínimo de dias úteis de compradorEhSolicitante), Nº do pedido
+  // e Descrição, todos obrigatórios, mais Cotação/orçamento opcional — sem
+  // centro de custo/resultado/conta contábil nem forma de pagamento. Não
+  // dispensa comprovante de pagamento do Financeiro (diferente de
+  // caixaInterno/fundoFixo) — é um adiantamento de verdade a um fornecedor
+  // externo, não uma reposição interna. Ver validarCriarSolicitacao/
+  // mapCamposSolicitacao em workflow.ts.
+  adiantamentoIndustrial Boolean @default(false)
+
   matrizComprador MatrizComprador[]
 
   // Ticket 05: solicitações of this tipo de compra.

@@ -220,6 +220,43 @@ async function lerCamposFundoFixo(
   };
 }
 
+// Adiantamento para Compras Industriais (ver
+// TipoCompra.adiantamentoIndustrial) — data de vencimento, nº do pedido e
+// CNPJ sob name próprio (...Adiantamento), mesmo raciocínio de Fundo
+// Fixo/Caixa Interno pra evitar colisão com os campos equivalentes
+// escondidos em .despesa-pessoal-fields/.campos-padrao (ambos ficam
+// escondidos inteiros nesse tipo). Cotação também é dedicada (o campo
+// genérico dentro de .campos-padrao fica escondido) e opcional — mesmo
+// padrão de "mantém o anexo atual se nenhum arquivo novo vier" de
+// lerCotacaoUrl, mas lendo de outro name.
+async function lerCamposAdiantamentoIndustrial(
+  formData: FormData,
+  solicitacaoIdParaAnexo: string,
+  cotacaoUrlAtual: string | null
+): Promise<
+  Pick<
+    CriarSolicitacaoInput,
+    "dataVencimento" | "numeroPedido" | "fornecedorDocumento" | "cotacaoUrl"
+  >
+> {
+  const campos = lerCampos(formData, [
+    "dataVencimentoAdiantamento",
+    "numeroPedidoAdiantamento",
+    "fornecedorDocumentoAdiantamento",
+  ]);
+  const cotacao = formData.get("cotacaoAdiantamento");
+  const cotacaoUrl =
+    cotacao instanceof File && cotacao.size > 0
+      ? await uploadAnexo(cotacao, solicitacaoIdParaAnexo)
+      : cotacaoUrlAtual;
+  return {
+    dataVencimento: campos.dataVencimentoAdiantamento || null,
+    numeroPedido: campos.numeroPedidoAdiantamento || null,
+    fornecedorDocumento: campos.fornecedorDocumentoAdiantamento || null,
+    cotacaoUrl,
+  };
+}
+
 // O departamento nunca vem do formulário: cada funcionário já tem um
 // departamento fixo no cadastro (ver /admin/funcionarios), então a
 // solicitação sempre herda o do solicitante — nunca é uma escolha dele. Qual
@@ -300,6 +337,12 @@ async function parseSolicitacaoForm(
     return {
       ...base,
       ...(await lerCamposFundoFixo(formData, solicitacaoIdParaAnexo, notaFiscalUrlsAtuais)),
+    };
+  }
+  if (tipoCompra?.adiantamentoIndustrial) {
+    return {
+      ...base,
+      ...(await lerCamposAdiantamentoIndustrial(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual)),
     };
   }
 
