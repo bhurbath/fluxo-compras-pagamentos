@@ -302,6 +302,18 @@ enum StatusSolicitacao {
   // para tipos de compra que exigem comprovante (ver
   // dispensaComprovantePagamento); os demais vão direto para PAGO.
   AGUARDANDO_COMPROVANTE
+  // "Compras pelo solicitante" (TipoCompra.compradorEhSolicitante) com forma
+  // de pagamento Adiantamento: o Financeiro já pagou o adiantamento e
+  // anexou o comprovante (ver confirmarComprovante), mas o ciclo só termina
+  // depois que o comprador (o próprio solicitante) presta contas de como o
+  // adiantamento foi usado — ver submeterPrestacaoContasAdiantamento em
+  // workflow.ts. Não existe para nenhum outro caso.
+  AGUARDANDO_PRESTACAO_CONTAS
+  // Sequência de AGUARDANDO_PRESTACAO_CONTAS: a documentação já foi
+  // enviada (ver Solicitacao.documentacaoBaixaAdiantamentoUrls, abaixo),
+  // faltando só o Financeiro revisar e confirmar a baixa do adiantamento
+  // (ver confirmarBaixaAdiantamento) — só então a solicitação vai para PAGO.
+  AGUARDANDO_CONFIRMACAO_BAIXA
   PAGO
 }
 
@@ -420,6 +432,13 @@ model Solicitacao {
   // workflow.ts) — o Financeiro pode precisar anexar mais de um comprovante
   // para o mesmo pagamento (ex.: comprovante do banco + extrato).
   comprovantePagamentoUrls String[]        @default([])
+  // "Compras pelo solicitante" com forma de pagamento Adiantamento (ver
+  // StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS): um ou mais caminhos no
+  // bucket de Storage com a documentação que comprova como o adiantamento
+  // foi usado, enviada pelo comprador (ver
+  // submeterPrestacaoContasAdiantamento em workflow.ts). Vazio para
+  // qualquer outro caso.
+  documentacaoBaixaAdiantamentoUrls String[] @default([])
   motivoRejeicao          String?
   motivoRecusaPagamento   String?
 

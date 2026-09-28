@@ -17,4 +17,6 @@ export const EVENTO_LEGIVEL: Record<string, string> = {
   reenviado_para_pagamento: "Reenviado para pagamento",
   pagamento_recusado: "Pagamento recusado",
   pago: "Pagamento registrado",
+  comprovante_anexado: "Comprovante do adiantamento anexado",
+  prestacao_contas_adiantamento_enviada: "Documentação de baixa do adiantamento enviada",
 };

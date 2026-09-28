@@ -790,13 +790,24 @@ async function notificarTodosFinanceiros(assunto: string, html: string): Promise
 // comprador a aprovação final pula direto para AGUARDANDO_PAGAMENTO. Mesmos
 // três pontos de chamada que designarComprador (processarEnvio,
 // aprovarNivel1, aprovarNivel2), escolhido no lugar dele quando
-// solicitacao.semCompra é true.
-async function enviarDiretoParaPagamento(solicitacao: {
-  id: string;
-  descricao: string;
-  valor: Prisma.Decimal;
-  solicitante: { email: string; nome: string };
-}): Promise<void> {
+// solicitacao.semCompra é true. Também usada, com opts.adiantamento, por
+// designarCompradorEAvancarSeAdiantamento para o adiantamento em "Compras
+// pelo solicitante" (TipoCompra.compradorEhSolicitante) — mesma transição e
+// mesmo formato de notificação, só o texto muda: diferente do caso
+// semCompra, essa solicitação TEM um comprador designado (precisa dele mais
+// adiante, para prestar contas do adiantamento — ver
+// AGUARDANDO_PRESTACAO_CONTAS no schema).
+async function enviarDiretoParaPagamento(
+  solicitacao: {
+    id: string;
+    descricao: string;
+    valor: Prisma.Decimal;
+    solicitante: { email: string; nome: string };
+  },
+  opts: { adiantamento?: boolean } = {}
+): Promise<void> {
+  const { adiantamento = false } = opts;
+
   await atualizarStatusComGuarda(
     solicitacao.id,
     StatusSolicitacao.APROVADO,
@@ -808,7 +819,9 @@ async function enviarDiretoParaPagamento(solicitacao: {
     solicitacao.id,
     "enviado_para_pagamento",
     null,
-    "Enviado automaticamente para o Financeiro — solicitação sem etapa de compra."
+    adiantamento
+      ? 'Enviado automaticamente para o Financeiro — adiantamento em "Compras pelo solicitante", sem etapa de compra.'
+      : "Enviado automaticamente para o Financeiro — solicitação sem etapa de compra."
   );
 
   await Promise.all([
@@ -818,15 +831,20 @@ async function enviarDiretoParaPagamento(solicitacao: {
       html:
         `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
         `<p>Sua solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "foi aprovada e enviada ao Financeiro para pagamento.</p>" +
+        (adiantamento
+          ? "foi aprovada e enviada ao Financeiro para o pagamento do adiantamento.</p>"
+          : "foi aprovada e enviada ao Financeiro para pagamento.</p>") +
         linkAcessoHtml(solicitacao.id),
     }),
     notificarTodosFinanceiros(
-      "Solicitação de pagamento aguardando processamento",
+      adiantamento
+        ? "Solicitação de adiantamento aguardando pagamento"
+        : "Solicitação de pagamento aguardando processamento",
       "<p>Olá.</p>" +
         `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
-        "não envolve compra e já está com a documentação anexada, aguardando o " +
-        "processamento do pagamento.</p>" +
+        (adiantamento
+          ? "é um adiantamento aprovado, sem etapa de compra, aguardando o processamento do pagamento.</p>"
+          : "não envolve compra e já está com a documentação anexada, aguardando o processamento do pagamento.</p>") +
         linkAcessoHtml(solicitacao.id)
     ),
   ]);
@@ -838,16 +856,49 @@ async function enviarDiretoParaPagamento(solicitacao: {
 // (departamentoId, tipoCompraId); with no match, the request just stays
 // with compradorId null and every Financeiro user is notified to designate
 // one manually via designarCompradorManualmente.
-async function designarComprador(solicitacao: {
-  id: string;
-  departamentoId: string;
-  tipoCompraId: string;
-  descricao: string;
-  valor: Prisma.Decimal;
-  solicitanteId: string;
-  solicitante: { email: string; nome: string };
+// Único ponto de verdade pra "isso é um adiantamento em 'Compras pelo
+// solicitante', que pula reto pro Financeiro" — usado tanto na designação
+// automática quanto em confirmarComprovante, abaixo. !semCompra é
+// obrigatório aqui: compradorEhSolicitante + formaPagamento Adiantamento
+// também é alcançável com a caixa "sem compra" marcada manualmente (ver
+// CriarSolicitacaoInput.semCompra) — nesse caso não existe comprador
+// designado nenhum (a solicitação já vai direto para pagamento por
+// enviarDiretoParaPagamento, não por este fluxo), então a condição não pode
+// disparar sem essa exclusão.
+function ehAdiantamentoCompradorSolicitante(solicitacao: {
+  semCompra: boolean;
   tipoCompra: { compradorEhSolicitante: boolean };
-}): Promise<void> {
+  formaPagamento: FormaPagamento | null;
+}): boolean {
+  return (
+    !solicitacao.semCompra &&
+    solicitacao.tipoCompra.compradorEhSolicitante &&
+    solicitacao.formaPagamento === FormaPagamento.ADIANTAMENTO
+  );
+}
+
+// Retorna true quando de fato designou alguém agora (false = já estava
+// designado por outra ação concorrente, ou não há matriz — aguardando
+// designação manual) — usado por designarCompradorEAvancarSeAdiantamento,
+// abaixo, para só avançar pro pagamento quando a designação realmente
+// aconteceu aqui. opts.silencioso pula o e-mail "você foi designado para
+// comprar" da designação automática por compradorEhSolicitante — usado
+// quando o chamador já vai mandar, na sequência, um e-mail mais preciso
+// (ver enviarDiretoParaPagamento com opts.adiantamento) porque essa
+// solicitação não tem etapa de compra nenhuma para o comprador executar.
+async function designarComprador(
+  solicitacao: {
+    id: string;
+    departamentoId: string;
+    tipoCompraId: string;
+    descricao: string;
+    valor: Prisma.Decimal;
+    solicitanteId: string;
+    solicitante: { email: string; nome: string };
+    tipoCompra: { compradorEhSolicitante: boolean };
+  },
+  opts: { silencioso?: boolean } = {}
+): Promise<boolean> {
   // Alguns tipos de compra (ex: serviços por departamento) são sempre
   // executados por quem pediu — a matriz não sabe expressar "o comprador é
   // quem solicitou" (ela mapeia departamento+tipo para uma pessoa fixa), daí
@@ -858,7 +909,7 @@ async function designarComprador(solicitacao: {
       data: { compradorId: solicitacao.solicitanteId },
     });
     if (count === 0) {
-      return;
+      return false;
     }
     await registrarHistorico(
       solicitacao.id,
@@ -866,8 +917,10 @@ async function designarComprador(solicitacao: {
       null,
       "Designado automaticamente: o comprador é o próprio solicitante (tipo de compra configurado assim)."
     );
-    await notificarComprador(solicitacao, solicitacao.solicitante);
-    return;
+    if (!opts.silencioso) {
+      await notificarComprador(solicitacao, solicitacao.solicitante);
+    }
+    return true;
   }
 
   const entrada = await getDb().matrizComprador.findFirst({
@@ -888,7 +941,7 @@ async function designarComprador(solicitacao: {
       data: { compradorId: entrada.compradorId },
     });
     if (count === 0) {
-      return;
+      return false;
     }
     await registrarHistorico(
       solicitacao.id,
@@ -897,7 +950,7 @@ async function designarComprador(solicitacao: {
       `Designado automaticamente pela matriz: ${entrada.comprador.nome}.`
     );
     await notificarComprador(solicitacao, entrada.comprador);
-    return;
+    return true;
   }
 
   await registrarHistorico(
@@ -914,6 +967,33 @@ async function designarComprador(solicitacao: {
       "de departamento e tipo de compra. Designe um comprador manualmente.</p>" +
       linkAcessoHtml(solicitacao.id)
   );
+  return false;
+}
+
+// Encapsula designarComprador + o desvio para enviarDiretoParaPagamento
+// (acima, com opts.adiantamento) — os três call sites (processarEnvio,
+// aprovarNivel1, aprovarNivel2)
+// chamam só esta função em vez de repetir a mesma condição em cada um. Só
+// avança pro pagamento quando designarComprador de fato designou agora
+// (não quando outra ação concorrente já tinha feito isso e esta chamada foi
+// um no-op) — ver o comentário de designarComprador acima.
+async function designarCompradorEAvancarSeAdiantamento(solicitacao: {
+  id: string;
+  departamentoId: string;
+  tipoCompraId: string;
+  descricao: string;
+  valor: Prisma.Decimal;
+  solicitanteId: string;
+  solicitante: { email: string; nome: string };
+  tipoCompra: { compradorEhSolicitante: boolean };
+  formaPagamento: FormaPagamento | null;
+  semCompra: boolean;
+}): Promise<void> {
+  const ehAdiantamento = ehAdiantamentoCompradorSolicitante(solicitacao);
+  const designado = await designarComprador(solicitacao, { silencioso: ehAdiantamento });
+  if (designado && ehAdiantamento) {
+    await enviarDiretoParaPagamento(solicitacao, { adiantamento: true });
+  }
 }
 
 // Compartilhado por toda transição restrita ao Financeiro que só recebe um
@@ -1061,7 +1141,7 @@ async function processarEnvio(
     if (solicitacao.semCompra) {
       await enviarDiretoParaPagamento(solicitacao);
     } else {
-      await designarComprador(solicitacao);
+      await designarCompradorEAvancarSeAdiantamento(solicitacao);
     }
   }
 
@@ -1145,7 +1225,7 @@ export async function aprovarNivel1(id: string, atorId: string) {
       await enviarDiretoParaPagamento(solicitacao);
     } else {
       await notificarSolicitanteAprovado(solicitacao);
-      await designarComprador(solicitacao);
+      await designarCompradorEAvancarSeAdiantamento(solicitacao);
     }
   } else if (resolucao.status === StatusSolicitacao.AGUARDANDO_NIVEL2) {
     await notificarDiretorPendente(solicitacao);
@@ -1185,7 +1265,7 @@ export async function aprovarNivel2(id: string, atorId: string) {
     await enviarDiretoParaPagamento(solicitacao);
   } else {
     await notificarSolicitanteAprovado(solicitacao);
-    await designarComprador(solicitacao);
+    await designarCompradorEAvancarSeAdiantamento(solicitacao);
   }
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
@@ -1520,6 +1600,17 @@ export async function listarPendentesComprovante() {
   });
 }
 
+// Fila da quarta etapa, exclusiva do adiantamento em "Compras pelo
+// solicitante" (ver confirmarBaixaAdiantamento) — o comprador já anexou a
+// documentação de baixa e só falta o Financeiro conferir e confirmar.
+export async function listarPendentesConfirmacaoBaixa() {
+  return getDb().solicitacao.findMany({
+    where: { status: StatusSolicitacao.AGUARDANDO_CONFIRMACAO_BAIXA },
+    include: { solicitante: true, departamento: true },
+    orderBy: { criadoEm: "asc" },
+  });
+}
+
 export async function recusarPagamento(id: string, atorId: string, motivo: string) {
   const motivoTrim = motivo.trim();
   if (!motivoTrim) {
@@ -1695,7 +1786,13 @@ export type ConfirmarComprovanteInput = {
 
 // Segunda etapa da confirmação de pagamento — só alcançável depois de
 // registrarPagamento ter deixado a solicitação em AGUARDANDO_COMPROVANTE.
-// Anexa o comprovante e conclui o fluxo (PAGO).
+// Anexa o comprovante. Na maioria dos casos isso já conclui o fluxo (PAGO);
+// exceção: "Compras pelo solicitante" com forma de pagamento Adiantamento
+// (ver designarCompradorEAvancarSeAdiantamento) não termina aqui — o
+// adiantamento em si já foi pago, mas ainda falta o comprador designado
+// (= o próprio solicitante) prestar contas de como o dinheiro foi usado, daí
+// AGUARDANDO_PRESTACAO_CONTAS em vez de PAGO (ver
+// submeterPrestacaoContasAdiantamento e confirmarBaixaAdiantamento, abaixo).
 export async function confirmarComprovante(
   id: string,
   atorId: string,
@@ -1712,21 +1809,26 @@ export async function confirmarComprovante(
     requireFinanceiroAtor(atorId, "Só o Financeiro pode anexar o comprovante."),
     getDb().solicitacao.findUnique({
       where: { id },
-      include: { solicitante: true },
+      include: { solicitante: true, tipoCompra: true },
     }),
   ]);
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
 
+  const ehAdiantamento = ehAdiantamentoCompradorSolicitante(solicitacao);
+  const novoStatus = ehAdiantamento
+    ? StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS
+    : StatusSolicitacao.PAGO;
+
   await atualizarStatusComGuarda(
     id,
     StatusSolicitacao.AGUARDANDO_COMPROVANTE,
-    { status: StatusSolicitacao.PAGO, comprovantePagamentoUrls },
+    { status: novoStatus, comprovantePagamentoUrls },
     "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
-  await registrarHistorico(id, "pago", atorId);
+  await registrarHistorico(id, ehAdiantamento ? "comprovante_anexado" : "pago", atorId);
 
   const linksComprovante = (input.comprovanteUrlsAssinadas ?? []).filter(
     (url): url is string => Boolean(url)
@@ -1748,6 +1850,101 @@ export async function confirmarComprovante(
             .join(" — ") +
           " (link válido por 7 dias).</p>"
         : "<p>O comprovante já está disponível na página da solicitação.</p>") +
+      (ehAdiantamento
+        ? "<p>Como comprador designado, agora você precisa anexar a documentação de " +
+          "baixa do adiantamento (notas fiscais, recibos etc.) na página da solicitação.</p>"
+        : "") +
+      linkAcessoHtml(id),
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export type SubmeterPrestacaoContasAdiantamentoInput = {
+  // Um ou mais caminhos no bucket de Storage — mesma convenção de
+  // ConfirmarComprovanteInput.comprovantePagamentoUrls.
+  documentacaoBaixaAdiantamentoUrls: string[];
+};
+
+// Terceira etapa, exclusiva do adiantamento em "Compras pelo solicitante"
+// (ver confirmarComprovante acima) — o comprador designado (= o próprio
+// solicitante) anexa a documentação que comprova como o adiantamento foi
+// usado. Só o Financeiro confirma a baixa depois (confirmarBaixaAdiantamento,
+// abaixo) — anexar aqui não conclui o fluxo sozinho.
+export async function submeterPrestacaoContasAdiantamento(
+  id: string,
+  atorId: string,
+  input: SubmeterPrestacaoContasAdiantamentoInput
+) {
+  const documentacaoBaixaAdiantamentoUrls = (input.documentacaoBaixaAdiantamentoUrls ?? [])
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  if (documentacaoBaixaAdiantamentoUrls.length === 0) {
+    throw new Error("A documentação de baixa do adiantamento é obrigatória.");
+  }
+
+  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (atorId !== solicitacao.compradorId) {
+    throw new Error("Só o comprador designado pode anexar a documentação de baixa.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS,
+    { status: StatusSolicitacao.AGUARDANDO_CONFIRMACAO_BAIXA, documentacaoBaixaAdiantamentoUrls },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "prestacao_contas_adiantamento_enviada", atorId);
+
+  await notificarTodosFinanceiros(
+    "Documentação de baixa de adiantamento aguardando confirmação",
+    "<p>Olá.</p>" +
+      `<p>A solicitação "${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}) ` +
+      "teve a documentação de baixa do adiantamento anexada pelo comprador e está " +
+      "aguardando a confirmação do Financeiro.</p>" +
+      linkAcessoHtml(id)
+  );
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+// Quarta e última etapa do adiantamento em "Compras pelo solicitante" — o
+// Financeiro confere a documentação de baixa enviada
+// (submeterPrestacaoContasAdiantamento, acima) e, só então, conclui o fluxo
+// (PAGO). Não é automático no upload porque a conferência da prestação de
+// contas é uma etapa de verdade, não um mero registro.
+export async function confirmarBaixaAdiantamento(id: string, atorId: string) {
+  const [, solicitacao] = await Promise.all([
+    requireFinanceiroAtor(atorId, "Só o Financeiro pode confirmar a baixa do adiantamento."),
+    getDb().solicitacao.findUnique({
+      where: { id },
+      include: { solicitante: true },
+    }),
+  ]);
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_CONFIRMACAO_BAIXA,
+    { status: StatusSolicitacao.PAGO },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(id, "pago", atorId, "Baixa do adiantamento confirmada pelo Financeiro.");
+
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Baixa do adiantamento confirmada",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>O Financeiro confirmou a baixa do adiantamento da sua solicitação ` +
+      `"${solicitacao.descricao}" (${formatarReais(solicitacao.valor)}). O fluxo está concluído.</p>` +
       linkAcessoHtml(id),
   });
 
@@ -1766,10 +1963,12 @@ export async function listarMinhasSolicitacoes(solicitanteId: string) {
   });
 }
 
-// "Pendentes de mim" (papel de comprador) — os três status em que o
-// comprador designado tem uma ação real a tomar: confirmar a compra
-// (APROVADO), enviar para pagamento (COMPRA_CONFIRMADA), ou corrigir e
-// reenviar depois de uma recusa (PAGAMENTO_RECUSADO).
+// "Pendentes de mim" (papel de comprador) — os status em que o comprador
+// designado tem uma ação real a tomar: confirmar a compra (APROVADO), enviar
+// para pagamento (COMPRA_CONFIRMADA), corrigir e reenviar depois de uma
+// recusa (PAGAMENTO_RECUSADO), ou anexar a documentação de baixa de um
+// adiantamento em "Compras pelo solicitante" (AGUARDANDO_PRESTACAO_CONTAS —
+// ver submeterPrestacaoContasAdiantamento).
 export async function listarPendentesComprador(compradorId: string) {
   return getDb().solicitacao.findMany({
     where: {
@@ -1781,6 +1980,7 @@ export async function listarPendentesComprador(compradorId: string) {
               StatusSolicitacao.APROVADO,
               StatusSolicitacao.COMPRA_CONFIRMADA,
               StatusSolicitacao.PAGAMENTO_RECUSADO,
+              StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS,
             ],
           },
         },

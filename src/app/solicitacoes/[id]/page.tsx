@@ -4,6 +4,7 @@ import { StatusSolicitacao } from "@prisma/client";
 import {
   aprovarNivel1Action,
   aprovarNivel2Action,
+  confirmarBaixaAdiantamentoAction,
   confirmarComprovanteAction,
   designarCompradorManualmenteAction,
   registrarPagamentoAction,
@@ -15,6 +16,7 @@ import {
   editarEReenviarAction,
   enviarParaPagamentoAction,
   reenviarParaPagamentoAction,
+  submeterPrestacaoContasAdiantamentoAction,
 } from "../actions";
 import { DetalhesSolicitacao } from "../_components/detalhes-solicitacao";
 import { PainelAprovacao } from "../_components/painel-aprovacao";
@@ -24,6 +26,8 @@ import { PainelConfirmarCompra } from "../_components/painel-confirmar-compra";
 import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
 import { PainelRegistrarPagamento } from "../_components/painel-registrar-pagamento";
 import { PainelConfirmarComprovante } from "../_components/painel-confirmar-comprovante";
+import { PainelPrestacaoContasAdiantamento } from "../_components/painel-prestacao-contas-adiantamento";
+import { PainelConfirmarBaixaAdiantamento } from "../_components/painel-confirmar-baixa-adiantamento";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import { DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE, obterSolicitacao } from "@/lib/workflow";
@@ -111,6 +115,21 @@ export default async function SolicitacaoDetalhePage({
   const podeConfirmarComprovante =
     solicitacao.status === StatusSolicitacao.AGUARDANDO_COMPROVANTE && usuario.flagFinanceiro;
 
+  // Terceira etapa, exclusiva do adiantamento em "Compras pelo solicitante"
+  // (ver submeterPrestacaoContasAdiantamento em workflow.ts) — só o
+  // comprador designado (= o próprio solicitante) anexa a documentação de
+  // baixa.
+  const podeSubmeterPrestacaoContasAdiantamento =
+    solicitacao.status === StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS &&
+    solicitacao.compradorId === usuario.id;
+
+  // Quarta e última etapa (ver confirmarBaixaAdiantamento em workflow.ts) —
+  // só o Financeiro confirma a baixa, depois de conferir a documentação
+  // anexada acima.
+  const podeConfirmarBaixaAdiantamento =
+    solicitacao.status === StatusSolicitacao.AGUARDANDO_CONFIRMACAO_BAIXA &&
+    usuario.flagFinanceiro;
+
   // Só busca as listas dos dropdowns quando a seção de edição vai
   // efetivamente aparecer — evita 6 consultas desnecessárias em toda
   // visualização de uma solicitação que não está rejeitada.
@@ -132,12 +151,17 @@ export default async function SolicitacaoDetalhePage({
   // Independentes entre si (URLs assinadas de vários anexos) — cada uma é
   // uma chamada de rede real ao Storage, então rodam todas em paralelo em
   // vez de uma esperar a outra.
-  const [notaFiscalUrlsAssinadas, comprovantePagamentoUrlsAssinadas, cotacaoUrlAssinada] =
-    await Promise.all([
-      Promise.all(solicitacao.notaFiscalUrls.map((url) => gerarUrlAssinada(url))),
-      Promise.all(solicitacao.comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url))),
-      solicitacao.cotacaoUrl ? gerarUrlAssinada(solicitacao.cotacaoUrl) : null,
-    ]);
+  const [
+    notaFiscalUrlsAssinadas,
+    comprovantePagamentoUrlsAssinadas,
+    cotacaoUrlAssinada,
+    documentacaoBaixaAdiantamentoUrlsAssinadas,
+  ] = await Promise.all([
+    Promise.all(solicitacao.notaFiscalUrls.map((url) => gerarUrlAssinada(url))),
+    Promise.all(solicitacao.comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url))),
+    solicitacao.cotacaoUrl ? gerarUrlAssinada(solicitacao.cotacaoUrl) : null,
+    Promise.all(solicitacao.documentacaoBaixaAdiantamentoUrls.map((url) => gerarUrlAssinada(url))),
+  ]);
 
   return (
     <main className="shell">
@@ -152,6 +176,7 @@ export default async function SolicitacaoDetalhePage({
             notaFiscalUrlsAssinadas={notaFiscalUrlsAssinadas}
             comprovantePagamentoUrlsAssinadas={comprovantePagamentoUrlsAssinadas}
             cotacaoUrlAssinada={cotacaoUrlAssinada}
+            documentacaoBaixaAdiantamentoUrlsAssinadas={documentacaoBaixaAdiantamentoUrlsAssinadas}
           />
         </div>
 
@@ -233,6 +258,20 @@ export default async function SolicitacaoDetalhePage({
           <PainelConfirmarComprovante
             solicitacaoId={solicitacao.id}
             action={confirmarComprovanteAction}
+          />
+        )}
+
+        {podeSubmeterPrestacaoContasAdiantamento && (
+          <PainelPrestacaoContasAdiantamento
+            solicitacaoId={solicitacao.id}
+            action={submeterPrestacaoContasAdiantamentoAction}
+          />
+        )}
+
+        {podeConfirmarBaixaAdiantamento && (
+          <PainelConfirmarBaixaAdiantamento
+            solicitacaoId={solicitacao.id}
+            action={confirmarBaixaAdiantamentoAction}
           />
         )}
 

@@ -15,19 +15,23 @@ export function DetalhesSolicitacao({
   notaFiscalUrlsAssinadas,
   comprovantePagamentoUrlsAssinadas,
   cotacaoUrlAssinada,
+  documentacaoBaixaAdiantamentoUrlsAssinadas,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
   // geradas pelo Server Component pai a partir dos caminhos guardados em
-  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrl (que não
-  // são URLs utilizáveis diretamente) — ver src/lib/storage.ts. Cada entrada
-  // de notaFiscalUrlsAssinadas/comprovantePagamentoUrlsAssinadas corresponde,
-  // na mesma posição, a uma entrada de
-  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls; null quando a URL
-  // não pôde ser gerada.
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrl/
+  // documentacaoBaixaAdiantamentoUrls (que não são URLs utilizáveis
+  // diretamente) — ver src/lib/storage.ts. Cada entrada de
+  // notaFiscalUrlsAssinadas/comprovantePagamentoUrlsAssinadas/
+  // documentacaoBaixaAdiantamentoUrlsAssinadas corresponde, na mesma posição,
+  // a uma entrada de
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/documentacaoBaixaAdiantamentoUrls;
+  // null quando a URL não pôde ser gerada.
   notaFiscalUrlsAssinadas?: (string | null)[];
   comprovantePagamentoUrlsAssinadas?: (string | null)[];
   cotacaoUrlAssinada?: string | null;
+  documentacaoBaixaAdiantamentoUrlsAssinadas?: (string | null)[];
 }) {
   return (
     <>
@@ -301,6 +305,35 @@ export function DetalhesSolicitacao({
                       >
                         Baixar comprovante
                         {solicitacao.comprovantePagamentoUrls.length > 1 ? ` ${indice + 1}` : ""}
+                      </a>
+                    ) : (
+                      "Link indisponível no momento — atualize a página."
+                    )}
+                  </span>
+                );
+              })}
+            </dd>
+          </div>
+        )}
+        {solicitacao.documentacaoBaixaAdiantamentoUrls.length > 0 && (
+          <div>
+            <dt className="muted">Documentação de baixa do adiantamento</dt>
+            <dd className="flex flex-col gap-1">
+              {solicitacao.documentacaoBaixaAdiantamentoUrls.map((_url, indice) => {
+                const urlAssinada = documentacaoBaixaAdiantamentoUrlsAssinadas?.[indice];
+                return (
+                  <span key={indice}>
+                    {urlAssinada ? (
+                      <a
+                        href={urlAssinada}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="link"
+                      >
+                        Baixar documento
+                        {solicitacao.documentacaoBaixaAdiantamentoUrls.length > 1
+                          ? ` ${indice + 1}`
+                          : ""}
                       </a>
                     ) : (
                       "Link indisponível no momento — atualize a página."

@@ -6,6 +6,7 @@ import { adicionarDiasUteis } from "@/lib/dias-uteis";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  confirmarBaixaAdiantamento,
   confirmarComprovante,
   confirmarCompra,
   criarSolicitacao,
@@ -16,6 +17,7 @@ import {
   listarMinhasSolicitacoes,
   listarPendentesComprador,
   listarPendentesComprovante,
+  listarPendentesConfirmacaoBaixa,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
@@ -26,6 +28,7 @@ import {
   reenviarParaPagamento,
   reenviarSolicitacao,
   rejeitar,
+  submeterPrestacaoContasAdiantamento,
   type CriarSolicitacaoInput,
 } from "@/lib/workflow";
 
@@ -2564,6 +2567,272 @@ describe("workflow: confirmarComprovante", () => {
     expect(html).toContain("Baixar comprovante 2");
     expect(html).toContain("https://exemplo.com/banco");
     expect(html).toContain("https://exemplo.com/extrato");
+  });
+});
+
+describe("workflow: adiantamento em Compras pelo solicitante", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  // Cria e envia uma solicitação de um tipo compradorEhSolicitante com forma
+  // de pagamento Adiantamento (ou outra, via overrides) — ponto de partida
+  // de todo teste deste describe. Ainda em ENVIADO: cada teste decide até
+  // onde avançar (aprovarNivel1, registrarPagamento, etc.).
+  async function criarSolicitacaoAdiantamentoEnviada(
+    sufixo: string,
+    overrides: { formaPagamento?: "ADIANTAMENTO" | "A_VISTA" | "PARCELADO" } = {}
+  ) {
+    await criarFaixa("0", null, false);
+    const departamento = await criarDepartamento(sufixo);
+    const tipo = await criarTipoCompra(`Tipo ${sufixo}`, { compradorEhSolicitante: true });
+    const solicitante = await criarUsuario(`sol-${sufixo}`);
+    const campos = await criarCamposObrigatorios(sufixo);
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Adiantamento de teste",
+      valor: "500",
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
+      ...campos,
+      formaPagamento: overrides.formaPagamento ?? "ADIANTAMENTO",
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+    return { solicitacao: enviada, departamento, solicitante };
+  }
+
+  async function criarSolicitacaoAdiantamentoAguardandoPagamento(sufixo: string) {
+    const { solicitacao, departamento, solicitante } =
+      await criarSolicitacaoAdiantamentoEnviada(sufixo);
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+    return { solicitacao: aprovada, departamento, solicitante };
+  }
+
+  async function criarSolicitacaoAdiantamentoAguardandoComprovante(sufixo: string) {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoPagamento(sufixo);
+    const financeiro = await criarUsuario(`fin-${sufixo}`);
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const registrada = await registrarPagamento(solicitacao.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+    return { solicitacao: registrada, solicitante, financeiro };
+  }
+
+  async function criarSolicitacaoAdiantamentoAguardandoPrestacaoContas(sufixo: string) {
+    const { solicitacao, solicitante, financeiro } =
+      await criarSolicitacaoAdiantamentoAguardandoComprovante(sufixo);
+    const comprovada = await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrls: [`${sufixo}/comprovante-adiantamento.pdf`],
+    });
+    return { solicitacao: comprovada, solicitante, financeiro };
+  }
+
+  async function criarSolicitacaoAdiantamentoAguardandoConfirmacaoBaixa(sufixo: string) {
+    const { solicitacao, solicitante, financeiro } =
+      await criarSolicitacaoAdiantamentoAguardandoPrestacaoContas(sufixo);
+    const enviada = await submeterPrestacaoContasAdiantamento(solicitacao.id, solicitante.id, {
+      documentacaoBaixaAdiantamentoUrls: [`${sufixo}/nota-fiscal-baixa.pdf`],
+    });
+    return { solicitacao: enviada, solicitante, financeiro };
+  }
+
+  it("após aprovado, vai direto para AGUARDANDO_PAGAMENTO com o solicitante como comprador designado", async () => {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoPagamento("ad1");
+
+    expect(solicitacao.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(solicitacao.compradorId).toBe(solicitante.id);
+  });
+
+  it("grava comprador_designado e enviado_para_pagamento automaticamente, sem passar por compra", async () => {
+    const { solicitacao } = await criarSolicitacaoAdiantamentoAguardandoPagamento("ad2");
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "aprovado",
+      "comprador_designado",
+      "enviado_para_pagamento",
+    ]);
+  });
+
+  it("notifica o solicitante e o Financeiro quando avança automaticamente para pagamento", async () => {
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const { solicitacao, solicitante } = await criarSolicitacaoAdiantamentoAguardandoPagamento(
+      "ad3"
+    );
+
+    expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: solicitante.email }));
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+    void solicitacao;
+  });
+
+  it("não pula a etapa quando a forma de pagamento não é Adiantamento", async () => {
+    const { solicitacao } = await criarSolicitacaoAdiantamentoEnviada("ad4", {
+      formaPagamento: "A_VISTA",
+    });
+    const departamento = await testDb.departamento.findUniqueOrThrow({
+      where: { id: solicitacao.departamentoId },
+    });
+
+    const aprovada = await aprovarNivel1(solicitacao.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("APROVADO");
+    expect(aprovada.compradorId).not.toBeNull();
+  });
+
+  it("marcando 'sem compra' manualmente, não fica preso em AGUARDANDO_PRESTACAO_CONTAS sem comprador", async () => {
+    // Combinação legal (validarCriarSolicitacao não a proíbe): tipo
+    // compradorEhSolicitante + Adiantamento, mas com a caixa "sem compra"
+    // marcada manualmente pelo solicitante — nesse caso nunca há comprador
+    // designado (ver processarEnvio: semCompra vai por
+    // enviarDiretoParaPagamento, nunca por designarCompradorEAvancarSeAdiantamento),
+    // então confirmarComprovante precisa continuar indo para PAGO, não para
+    // AGUARDANDO_PRESTACAO_CONTAS (que exigiria um comprador inexistente).
+    await criarFaixa("0", null, false);
+    const departamento = await criarDepartamento("ad12");
+    const tipo = await criarTipoCompra("Tipo ad12", { compradorEhSolicitante: true });
+    const solicitante = await criarUsuario("sol-ad12");
+    const campos = await criarCamposObrigatorios("ad12");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Adiantamento sem compra de teste",
+      valor: "500",
+      dataVencimento: adicionarDiasUteis(new Date(), 20).toISOString().slice(0, 10),
+      ...campos,
+      formaPagamento: "ADIANTAMENTO",
+      semCompra: true,
+      notaFiscalUrls: ["ad12/documentacao.pdf"],
+      metodoPagamento: "PIX",
+      dadosPagamento: "Chave PIX: 12345678900",
+      fornecedorDocumento: "12.345.678/0001-99",
+    });
+    const enviada = await enviarSolicitacao(rascunho.id);
+    const aprovada = await aprovarNivel1(enviada.id, departamento.responsavelId);
+
+    expect(aprovada.status).toBe("AGUARDANDO_PAGAMENTO");
+    expect(aprovada.compradorId).toBeNull();
+
+    const financeiro = await criarUsuario("fin-ad12");
+    await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+    const registrada = await registrarPagamento(aprovada.id, financeiro.id, {
+      dataPrevistaPagamento: "2026-09-30",
+    });
+    expect(registrada.status).toBe("AGUARDANDO_COMPROVANTE");
+
+    const paga = await confirmarComprovante(aprovada.id, financeiro.id, {
+      comprovantePagamentoUrls: ["ad12/comprovante.pdf"],
+    });
+
+    expect(paga.status).toBe("PAGO");
+  });
+
+  it("ainda exige comprovante do Financeiro (não é dispensado como Fundo Fixo/Caixa Interno)", async () => {
+    const { solicitacao, financeiro } =
+      await criarSolicitacaoAdiantamentoAguardandoComprovante("ad5");
+
+    expect(solicitacao.status).toBe("AGUARDANDO_COMPROVANTE");
+
+    await expect(
+      confirmarComprovante(solicitacao.id, financeiro.id, { comprovantePagamentoUrls: [] })
+    ).rejects.toThrow();
+  });
+
+  it("ao anexar o comprovante, vai para AGUARDANDO_PRESTACAO_CONTAS em vez de PAGO", async () => {
+    const { solicitacao } =
+      await criarSolicitacaoAdiantamentoAguardandoPrestacaoContas("ad6");
+
+    expect(solicitacao.status).toBe("AGUARDANDO_PRESTACAO_CONTAS");
+  });
+
+  it("submeterPrestacaoContasAdiantamento exige documentação e só aceita o comprador designado", async () => {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoPrestacaoContas("ad7");
+    const outroUsuario = await criarUsuario("outro-ad7");
+
+    await expect(
+      submeterPrestacaoContasAdiantamento(solicitacao.id, solicitante.id, {
+        documentacaoBaixaAdiantamentoUrls: [],
+      })
+    ).rejects.toThrow();
+
+    await expect(
+      submeterPrestacaoContasAdiantamento(solicitacao.id, outroUsuario.id, {
+        documentacaoBaixaAdiantamentoUrls: ["ad7/nota.pdf"],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("submeterPrestacaoContasAdiantamento grava a documentação e avança para AGUARDANDO_CONFIRMACAO_BAIXA", async () => {
+    const { solicitacao } =
+      await criarSolicitacaoAdiantamentoAguardandoConfirmacaoBaixa("ad8");
+
+    expect(solicitacao.status).toBe("AGUARDANDO_CONFIRMACAO_BAIXA");
+    expect(solicitacao.documentacaoBaixaAdiantamentoUrls).toEqual(["ad8/nota-fiscal-baixa.pdf"]);
+  });
+
+  it("notifica o Financeiro quando a prestação de contas é submetida", async () => {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoPrestacaoContas("ad9");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await submeterPrestacaoContasAdiantamento(solicitacao.id, solicitante.id, {
+      documentacaoBaixaAdiantamentoUrls: ["ad9/nota.pdf"],
+    });
+
+    expect(enviarSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ to: process.env.EMAIL_FINANCEIRO })
+    );
+  });
+
+  it("confirmarBaixaAdiantamento exige Financeiro e conclui o fluxo em PAGO", async () => {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoConfirmacaoBaixa("ad10");
+    const naoFinanceiro = await criarUsuario("naofin-ad10");
+
+    await expect(confirmarBaixaAdiantamento(solicitacao.id, naoFinanceiro.id)).rejects.toThrow();
+
+    const financeiro2 = await criarUsuario("fin2-ad10");
+    await testDb.usuario.update({ where: { id: financeiro2.id }, data: { flagFinanceiro: true } });
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    const paga = await confirmarBaixaAdiantamento(solicitacao.id, financeiro2.id);
+
+    expect(paga.status).toBe("PAGO");
+    expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: solicitante.email }));
+  });
+
+  it("aparece em listarPendentesComprador (AGUARDANDO_PRESTACAO_CONTAS) e listarPendentesConfirmacaoBaixa", async () => {
+    const { solicitacao, solicitante } =
+      await criarSolicitacaoAdiantamentoAguardandoPrestacaoContas("ad11");
+
+    const pendentesComprador = await listarPendentesComprador(solicitante.id);
+    expect(pendentesComprador.map((s) => s.id)).toContain(solicitacao.id);
+
+    await submeterPrestacaoContasAdiantamento(solicitacao.id, solicitante.id, {
+      documentacaoBaixaAdiantamentoUrls: ["ad11/nota.pdf"],
+    });
+
+    const pendentesConfirmacaoBaixa = await listarPendentesConfirmacaoBaixa();
+    expect(pendentesConfirmacaoBaixa.map((s) => s.id)).toContain(solicitacao.id);
   });
 });
 

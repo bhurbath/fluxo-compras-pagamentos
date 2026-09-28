@@ -16,6 +16,7 @@ import {
   obterSolicitacao,
   reenviarParaPagamento,
   reenviarSolicitacao,
+  submeterPrestacaoContasAdiantamento,
   type CriarSolicitacaoInput,
   type EnviarParaPagamentoInput,
 } from "@/lib/workflow";
@@ -503,6 +504,29 @@ export const reenviarParaPagamentoAction = comUsuarioAutenticado(
     try {
       const input = await lerCamposEnviarPagamento(id, formData);
       await reenviarParaPagamento(id, usuario.id, input);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// Terceira etapa do adiantamento em "Compras pelo solicitante" (ver
+// submeterPrestacaoContasAdiantamento em workflow.ts) — o comprador
+// designado (= o próprio solicitante) anexa a documentação de baixa. Aceita
+// mais de um arquivo, mesma convenção de lerArquivos acima.
+export const submeterPrestacaoContasAdiantamentoAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    try {
+      const documentacaoBaixaAdiantamentoUrls = await lerArquivos(
+        formData,
+        "documentacaoBaixa",
+        id
+      );
+      await submeterPrestacaoContasAdiantamento(id, usuario.id, {
+        documentacaoBaixaAdiantamentoUrls,
+      });
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

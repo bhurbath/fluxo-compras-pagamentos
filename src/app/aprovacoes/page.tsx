@@ -4,6 +4,7 @@ import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import {
   listarPendentesComprador,
   listarPendentesComprovante,
+  listarPendentesConfirmacaoBaixa,
   listarPendentesDesignacaoComprador,
   listarPendentesNivel1,
   listarPendentesNivel2,
@@ -22,14 +23,19 @@ export default async function AprovacoesPage() {
     listarPendentesNivel2(usuario.id),
     listarPendentesComprador(usuario.id),
   ]);
-  const [pendentesDesignacaoComprador, pendentesPagamento, pendentesComprovante] =
-    usuario.flagFinanceiro
-      ? await Promise.all([
-          listarPendentesDesignacaoComprador(),
-          listarPendentesPagamento(),
-          listarPendentesComprovante(),
-        ])
-      : [null, null, null];
+  const [
+    pendentesDesignacaoComprador,
+    pendentesPagamento,
+    pendentesComprovante,
+    pendentesConfirmacaoBaixa,
+  ] = usuario.flagFinanceiro
+    ? await Promise.all([
+        listarPendentesDesignacaoComprador(),
+        listarPendentesPagamento(),
+        listarPendentesComprovante(),
+        listarPendentesConfirmacaoBaixa(),
+      ])
+    : [null, null, null, null];
 
   return (
     <main className="shell">
@@ -75,6 +81,14 @@ export default async function AprovacoesPage() {
             titulo="Confirmar comprovante (Financeiro)"
             itens={pendentesComprovante}
             vazioMensagem="Nenhuma solicitação aguardando confirmação de comprovante."
+          />
+        )}
+
+        {pendentesConfirmacaoBaixa && (
+          <TabelaSolicitacoes
+            titulo="Confirmar baixa de adiantamento (Financeiro)"
+            itens={pendentesConfirmacaoBaixa}
+            vazioMensagem="Nenhuma solicitação aguardando confirmação de baixa de adiantamento."
           />
         )}
 

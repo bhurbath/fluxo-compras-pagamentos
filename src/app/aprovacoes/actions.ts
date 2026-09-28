@@ -9,6 +9,7 @@ import { gerarUrlAssinada, uploadAnexo } from "@/lib/storage";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  confirmarBaixaAdiantamento,
   confirmarComprovante,
   designarCompradorManualmente,
   registrarPagamento,
@@ -126,6 +127,23 @@ export const confirmarComprovanteAction = withFinanceiro(
         comprovantePagamentoUrls,
         comprovanteUrlsAssinadas,
       });
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// Quarta e última etapa, exclusiva do adiantamento em "Compras pelo
+// solicitante" (ver confirmarBaixaAdiantamento em workflow.ts) — o Financeiro
+// já conferiu a documentação de baixa anexada pelo comprador e confirma,
+// concluindo o fluxo (PAGO). Sem upload nenhum aqui, só a confirmação.
+export const confirmarBaixaAdiantamentoAction = withFinanceiro(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await confirmarBaixaAdiantamento(id, usuario.id);
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

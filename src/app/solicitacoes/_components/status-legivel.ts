@@ -11,6 +11,8 @@ export const STATUS_LEGIVEL: Record<string, string> = {
   AGUARDANDO_PAGAMENTO: "Aguardando pagamento",
   PAGAMENTO_RECUSADO: "Pagamento recusado",
   AGUARDANDO_COMPROVANTE: "Aguardando comprovante",
+  AGUARDANDO_PRESTACAO_CONTAS: "Aguardando prestação de contas",
+  AGUARDANDO_CONFIRMACAO_BAIXA: "Aguardando confirmação da baixa",
   PAGO: "Pago",
 };
 
@@ -26,5 +28,7 @@ export const STATUS_TONE: Record<string, "progress" | "success" | "danger" | und
   AGUARDANDO_PAGAMENTO: "progress",
   PAGAMENTO_RECUSADO: "danger",
   AGUARDANDO_COMPROVANTE: "progress",
+  AGUARDANDO_PRESTACAO_CONTAS: "progress",
+  AGUARDANDO_CONFIRMACAO_BAIXA: "progress",
   PAGO: "success",
 };
