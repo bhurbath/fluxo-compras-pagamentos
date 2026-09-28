@@ -62,6 +62,7 @@ const FORMAS_PAGAMENTO = [
 // nesses tipos), evitando a mesma colisão.
 export function CamposSolicitacao({
   defaultValues,
+  valoresPreservados,
   tiposCompra,
   centrosCusto,
   centrosResultado,
@@ -99,6 +100,19 @@ export function CamposSolicitacao({
     possuiAdiantamento?: boolean | null;
     dataDespesa?: string | null;
   };
+  // Snapshot bruto (nome do <input> no HTML → valor) do último envio deste
+  // formulário que falhou — ver redirectComErroPreservandoFormulario/
+  // lerFormularioPreservado em src/lib/redirect-with-error.ts. Quando
+  // presente, tem prioridade total sobre defaultValues em todo campo
+  // texto/select/checkbox: é o que a pessoa acabou de digitar, mais
+  // relevante do que o que estava salvo no banco (caso de edição) ou do que
+  // um formulário em branco (caso de criação). Indexado pelo name literal
+  // do HTML, não pelo nome conceitual de defaultValues — por isso funciona
+  // sem precisar saber qual variante (RDV/Caixa Interno/Fundo Fixo/
+  // Adiantamento/...) estava selecionada quando o envio falhou. Nunca inclui
+  // campos de arquivo (impossível restaurar o valor de <input type="file">
+  // por restrição do próprio navegador).
+  valoresPreservados?: Record<string, string>;
   tiposCompra: TipoCompraLista[];
   centrosCusto: Lista[];
   centrosResultado: Lista[];
@@ -113,13 +127,23 @@ export function CamposSolicitacao({
   // validarCriarSolicitacao no servidor.
   dataVencimentoMinima?: string;
 }) {
+  // Ver comentário de valoresPreservados acima — presente, usa só ele
+  // (o snapshot mais recente do que foi digitado); ausente, cai no
+  // comportamento de sempre (defaultValues, derivado do banco ou vazio).
+  function v(nome: string, fallback?: string | null): string {
+    return valoresPreservados ? (valoresPreservados[nome] ?? "") : (fallback ?? "");
+  }
+  function marcado(nome: string, fallback?: boolean | null): boolean {
+    return valoresPreservados ? nome in valoresPreservados : Boolean(fallback);
+  }
+
   return (
     <>
       <label className="field campo-descricao">
         Descrição
         <textarea
           name="descricao"
-          defaultValue={defaultValues?.descricao}
+          defaultValue={v("descricao", defaultValues?.descricao)}
           className="input-field"
         />
       </label>
@@ -132,7 +156,7 @@ export function CamposSolicitacao({
           step="0.01"
           min="0.01"
           required
-          defaultValue={defaultValues?.valor}
+          defaultValue={v("valor", defaultValues?.valor)}
           className="input-field"
         />
       </label>
@@ -140,7 +164,7 @@ export function CamposSolicitacao({
         Tipo de compra
         <select
           name="tipoCompraId"
-          defaultValue={defaultValues?.tipoCompraId ?? ""}
+          defaultValue={v("tipoCompraId", defaultValues?.tipoCompraId)}
           required
           className="input-field"
         >
@@ -168,7 +192,7 @@ export function CamposSolicitacao({
         <input
           name="fornecedor"
           type="text"
-          defaultValue={defaultValues?.fornecedor ?? ""}
+          defaultValue={v("fornecedor", defaultValues?.fornecedor)}
           className="input-field"
         />
       </label>
@@ -176,7 +200,7 @@ export function CamposSolicitacao({
         Empresa
         <select
           name="empresaId"
-          defaultValue={defaultValues?.empresaId ?? ""}
+          defaultValue={v("empresaId", defaultValues?.empresaId)}
           className="input-field"
         >
           <option value="">Selecione</option>
@@ -192,7 +216,7 @@ export function CamposSolicitacao({
         <input
           name="nomeColaboradorRdv"
           type="text"
-          defaultValue={defaultValues?.nomeColaboradorRdv ?? ""}
+          defaultValue={v("nomeColaboradorRdv", defaultValues?.nomeColaboradorRdv)}
           className="input-field"
         />
       </label>
@@ -201,7 +225,7 @@ export function CamposSolicitacao({
         <input
           name="numeroRdv"
           type="text"
-          defaultValue={defaultValues?.numeroRdv ?? ""}
+          defaultValue={v("numeroRdv", defaultValues?.numeroRdv)}
           className="input-field"
         />
       </label>
@@ -210,7 +234,7 @@ export function CamposSolicitacao({
         <input
           name="dataRdv"
           type="date"
-          defaultValue={defaultValues?.dataRdv ?? ""}
+          defaultValue={v("dataRdv", defaultValues?.dataRdv)}
           className="input-field"
         />
       </label>
@@ -221,7 +245,7 @@ export function CamposSolicitacao({
           type="number"
           step="0.01"
           min="0"
-          defaultValue={defaultValues?.valorReembolsar ?? ""}
+          defaultValue={v("valorReembolsar", defaultValues?.valorReembolsar)}
           className="input-field"
         />
       </label>
@@ -232,7 +256,7 @@ export function CamposSolicitacao({
           type="number"
           step="0.01"
           min="0"
-          defaultValue={defaultValues?.valorCartaoOnfly ?? ""}
+          defaultValue={v("valorCartaoOnfly", defaultValues?.valorCartaoOnfly)}
           className="input-field"
         />
       </label>
@@ -240,7 +264,7 @@ export function CamposSolicitacao({
         Informações complementares (opcional)
         <textarea
           name="informacoesComplementares"
-          defaultValue={defaultValues?.informacoesComplementares ?? ""}
+          defaultValue={v("informacoesComplementares", defaultValues?.informacoesComplementares)}
           className="input-field"
         />
       </label>
@@ -248,7 +272,7 @@ export function CamposSolicitacao({
         <input
           name="possuiAdiantamento"
           type="checkbox"
-          defaultChecked={defaultValues?.possuiAdiantamento ?? false}
+          defaultChecked={marcado("possuiAdiantamento", defaultValues?.possuiAdiantamento)}
         />
         Esta RDV possui adiantamento
       </label>
@@ -274,7 +298,7 @@ export function CamposSolicitacao({
         <input
           name="dataDespesa"
           type="date"
-          defaultValue={defaultValues?.dataDespesa ?? ""}
+          defaultValue={v("dataDespesa", defaultValues?.dataDespesa)}
           className="input-field"
         />
       </label>
@@ -282,7 +306,7 @@ export function CamposSolicitacao({
         Centro de custo
         <select
           name="centroCustoIdCaixaInterno"
-          defaultValue={defaultValues?.centroCustoId ?? ""}
+          defaultValue={v("centroCustoIdCaixaInterno", defaultValues?.centroCustoId)}
           className="input-field"
         >
           <option value="">Selecione</option>
@@ -297,7 +321,7 @@ export function CamposSolicitacao({
         Centro de resultado
         <select
           name="centroResultadoIdCaixaInterno"
-          defaultValue={defaultValues?.centroResultadoId ?? ""}
+          defaultValue={v("centroResultadoIdCaixaInterno", defaultValues?.centroResultadoId)}
           className="input-field"
         >
           <option value="">Selecione</option>
@@ -312,7 +336,7 @@ export function CamposSolicitacao({
         Conta contábil
         <select
           name="contaContabilIdCaixaInterno"
-          defaultValue={defaultValues?.contaContabilId ?? ""}
+          defaultValue={v("contaContabilIdCaixaInterno", defaultValues?.contaContabilId)}
           className="input-field"
         >
           <option value="">Selecione</option>
@@ -345,7 +369,7 @@ export function CamposSolicitacao({
         <input
           name="dataVencimentoFundoFixo"
           type="date"
-          defaultValue={defaultValues?.dataVencimento ?? ""}
+          defaultValue={v("dataVencimentoFundoFixo", defaultValues?.dataVencimento)}
           className="input-field"
         />
       </label>
@@ -363,7 +387,7 @@ export function CamposSolicitacao({
         PIX para depósito
         <textarea
           name="pixDeposito"
-          defaultValue={defaultValues?.dadosPagamento ?? ""}
+          defaultValue={v("pixDeposito", defaultValues?.dadosPagamento)}
           className="input-field"
         />
       </label>
@@ -373,7 +397,7 @@ export function CamposSolicitacao({
         <input
           name="fornecedorDocumentoAdiantamento"
           type="text"
-          defaultValue={defaultValues?.fornecedorDocumento ?? ""}
+          defaultValue={v("fornecedorDocumentoAdiantamento", defaultValues?.fornecedorDocumento)}
           className="input-field"
         />
       </label>
@@ -382,7 +406,7 @@ export function CamposSolicitacao({
         <input
           name="dataVencimentoAdiantamento"
           type="date"
-          defaultValue={defaultValues?.dataVencimento ?? ""}
+          defaultValue={v("dataVencimentoAdiantamento", defaultValues?.dataVencimento)}
           className="input-field"
         />
       </label>
@@ -391,7 +415,7 @@ export function CamposSolicitacao({
         <input
           name="numeroPedidoAdiantamento"
           type="text"
-          defaultValue={defaultValues?.numeroPedido ?? ""}
+          defaultValue={v("numeroPedidoAdiantamento", defaultValues?.numeroPedido)}
           className="input-field"
         />
       </label>
@@ -415,7 +439,7 @@ export function CamposSolicitacao({
           Forma de pagamento
           <select
             name="formaPagamento"
-            defaultValue={defaultValues?.formaPagamento ?? ""}
+            defaultValue={v("formaPagamento", defaultValues?.formaPagamento)}
             className="input-field"
           >
             <option value="">Selecione</option>
@@ -430,7 +454,7 @@ export function CamposSolicitacao({
           Centro de custo
           <select
             name="centroCustoId"
-            defaultValue={defaultValues?.centroCustoId ?? ""}
+            defaultValue={v("centroCustoId", defaultValues?.centroCustoId)}
             className="input-field"
           >
             <option value="">Selecione</option>
@@ -445,7 +469,7 @@ export function CamposSolicitacao({
           Centro de resultado
           <select
             name="centroResultadoId"
-            defaultValue={defaultValues?.centroResultadoId ?? ""}
+            defaultValue={v("centroResultadoId", defaultValues?.centroResultadoId)}
             className="input-field"
           >
             <option value="">Selecione</option>
@@ -460,7 +484,7 @@ export function CamposSolicitacao({
           Conta contábil
           <select
             name="contaContabilId"
-            defaultValue={defaultValues?.contaContabilId ?? ""}
+            defaultValue={v("contaContabilId", defaultValues?.contaContabilId)}
             className="input-field"
           >
             <option value="">Selecione</option>
@@ -477,7 +501,7 @@ export function CamposSolicitacao({
             name="dataVencimentoCompradorSolicitante"
             type="date"
             min={dataVencimentoMinima}
-            defaultValue={defaultValues?.dataVencimento ?? ""}
+            defaultValue={v("dataVencimentoCompradorSolicitante", defaultValues?.dataVencimento)}
             className="input-field"
           />
           <span className="muted-xs">
@@ -489,7 +513,7 @@ export function CamposSolicitacao({
           <input
             name="linkCompra"
             type="text"
-            defaultValue={defaultValues?.linkCompra ?? ""}
+            defaultValue={v("linkCompra", defaultValues?.linkCompra)}
             autoComplete="off"
             className="input-field"
           />
@@ -514,7 +538,7 @@ export function CamposSolicitacao({
             id="semCompra"
             name="semCompra"
             type="checkbox"
-            defaultChecked={defaultValues?.semCompra}
+            defaultChecked={marcado("semCompra", defaultValues?.semCompra)}
           />
           Esta solicitação não envolve compra — é só pagamento direto (ex.: encargos, taxas,
           guias), com a documentação já anexada.
@@ -543,7 +567,7 @@ export function CamposSolicitacao({
             <input
               type="text"
               name="fornecedorDocumento"
-              defaultValue={defaultValues?.fornecedorDocumento ?? ""}
+              defaultValue={v("fornecedorDocumento", defaultValues?.fornecedorDocumento)}
               className="input-field"
             />
           </label>
@@ -551,7 +575,7 @@ export function CamposSolicitacao({
             Método de pagamento
             <select
               name="metodoPagamento"
-              defaultValue={defaultValues?.metodoPagamento ?? ""}
+              defaultValue={v("metodoPagamento", defaultValues?.metodoPagamento)}
               className="input-field"
             >
               <option value="">Selecione</option>
@@ -566,7 +590,7 @@ export function CamposSolicitacao({
             Dados de pagamento (chave PIX, dados bancários, etc.)
             <textarea
               name="dadosPagamento"
-              defaultValue={defaultValues?.dadosPagamento ?? ""}
+              defaultValue={v("dadosPagamento", defaultValues?.dadosPagamento)}
               className="input-field"
             />
           </label>
@@ -578,7 +602,7 @@ export function CamposSolicitacao({
           Categoria da despesa
           <select
             name="categoriaDespesaPessoalId"
-            defaultValue={defaultValues?.categoriaDespesaPessoalId ?? ""}
+            defaultValue={v("categoriaDespesaPessoalId", defaultValues?.categoriaDespesaPessoalId)}
             className="input-field"
           >
             <option value="">Selecione</option>
@@ -594,7 +618,7 @@ export function CamposSolicitacao({
           <input
             name="numeroPedido"
             type="text"
-            defaultValue={defaultValues?.numeroPedido ?? ""}
+            defaultValue={v("numeroPedido", defaultValues?.numeroPedido)}
             className="input-field"
           />
         </label>
@@ -603,7 +627,7 @@ export function CamposSolicitacao({
           <input
             name="dataVencimento"
             type="date"
-            defaultValue={defaultValues?.dataVencimento ?? ""}
+            defaultValue={v("dataVencimento", defaultValues?.dataVencimento)}
             className="input-field"
           />
         </label>
@@ -611,7 +635,7 @@ export function CamposSolicitacao({
           Dados de pagamento (opcional — chave PIX, dados bancários, etc.)
           <textarea
             name="dadosPagamentoDespesa"
-            defaultValue={defaultValues?.dadosPagamento ?? ""}
+            defaultValue={v("dadosPagamentoDespesa", defaultValues?.dadosPagamento)}
             className="input-field"
           />
         </label>

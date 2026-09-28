@@ -6,6 +6,7 @@ import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { adicionarDiasUteis } from "@/lib/dias-uteis";
 import { DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE } from "@/lib/workflow";
+import { lerFormularioPreservado } from "@/lib/redirect-with-error";
 
 export default async function NovaSolicitacaoPage({
   searchParams,
@@ -18,7 +19,10 @@ export default async function NovaSolicitacaoPage({
   }
 
   const { erro } = await searchParams;
-  const listas = await listarListasSolicitacao();
+  const [listas, valoresPreservados] = await Promise.all([
+    listarListasSolicitacao(),
+    lerFormularioPreservado(),
+  ]);
   // "Compras pelo solicitante" (ver TipoCompra.compradorEhSolicitante) —
   // usado só como `min` do <input type="date"> em CamposSolicitacao
   // (orientação do navegador); validarCriarSolicitacao no servidor é quem
@@ -39,7 +43,11 @@ export default async function NovaSolicitacaoPage({
           <ErroMensagem erro={erro} />
 
           <form className="flex flex-col gap-3" encType="multipart/form-data">
-            <CamposSolicitacao {...listas} dataVencimentoMinima={dataVencimentoMinima} />
+            <CamposSolicitacao
+              {...listas}
+              valoresPreservados={valoresPreservados}
+              dataVencimentoMinima={dataVencimentoMinima}
+            />
             <div className="flex gap-3" style={{ marginTop: "0.25rem" }}>
               <button
                 type="submit"

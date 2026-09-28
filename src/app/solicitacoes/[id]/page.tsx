@@ -39,6 +39,7 @@ import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
 import { gerarUrlAssinada } from "@/lib/storage";
 import { adicionarDiasUteis } from "@/lib/dias-uteis";
+import { lerFormularioPreservado } from "@/lib/redirect-with-error";
 
 export default async function SolicitacaoDetalhePage({
   params,
@@ -142,8 +143,12 @@ export default async function SolicitacaoDetalhePage({
 
   // Só busca as listas dos dropdowns quando a seção de edição vai
   // efetivamente aparecer — evita 6 consultas desnecessárias em toda
-  // visualização de uma solicitação que não está rejeitada.
-  const listasParaEdicao = podeEditarEReenviar ? await listarListasSolicitacao() : null;
+  // visualização de uma solicitação que não está rejeitada. Mesma lógica
+  // para o formulário preservado (ver CamposSolicitacao) — só faz sentido
+  // ler o cookie quando o painel de edição vai de fato aparecer.
+  const [listasParaEdicao, valoresPreservados] = podeEditarEReenviar
+    ? await Promise.all([listarListasSolicitacao(), lerFormularioPreservado()])
+    : [null, undefined];
 
   // Ver comentário em CamposSolicitacao — usado só como `min` do
   // <input type="date"> de "Compras pelo solicitante"; calculado a partir
@@ -214,6 +219,7 @@ export default async function SolicitacaoDetalhePage({
             listas={listasParaEdicao}
             action={editarEReenviarAction}
             dataVencimentoMinima={dataVencimentoMinima}
+            valoresPreservados={valoresPreservados}
           />
         )}
 

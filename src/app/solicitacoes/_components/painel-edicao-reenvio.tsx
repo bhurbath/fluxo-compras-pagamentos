@@ -7,6 +7,7 @@ export function PainelEdicaoReenvio({
   listas,
   action,
   dataVencimentoMinima,
+  valoresPreservados,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   listas: Awaited<ReturnType<typeof listarListasSolicitacao>>;
@@ -14,6 +15,10 @@ export function PainelEdicaoReenvio({
   // Ver comentário em CamposSolicitacao — só orienta o navegador, não
   // substitui a checagem em validarCriarSolicitacao.
   dataVencimentoMinima?: string;
+  // Ver comentário em CamposSolicitacao — quando presente (edição/reenvio
+  // anterior falhou), tem prioridade sobre os defaultValues derivados do
+  // banco logo abaixo.
+  valoresPreservados?: Record<string, string>;
 }) {
   return (
     <div className="card-block">
@@ -53,6 +58,7 @@ export function PainelEdicaoReenvio({
             possuiAdiantamento: solicitacao.possuiAdiantamento,
             dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
           }}
+          valoresPreservados={valoresPreservados}
           {...listas}
           dataVencimentoMinima={dataVencimentoMinima}
         />

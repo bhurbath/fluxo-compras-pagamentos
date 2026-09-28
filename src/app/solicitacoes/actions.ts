@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { comUsuarioAutenticado } from "@/lib/require-usuario";
-import { redirectComErro } from "@/lib/redirect-with-error";
+import { preservarFormulario, redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
 import { exigirTodos, lerCampos } from "@/lib/form-helpers";
 import { uploadAnexo } from "@/lib/storage";
@@ -389,6 +389,7 @@ export const criarRascunhoAction = comUsuarioAutenticado(
       const input = await parseSolicitacaoForm(usuario, formData, crypto.randomUUID());
       solicitacao = await criarSolicitacao(input);
     } catch (error) {
+      await preservarFormulario(formData);
       redirectComErro("/solicitacoes/nova", toFriendlyError(error));
     }
 
@@ -407,10 +408,14 @@ export const criarEEnviarAction = comUsuarioAutenticado(
       // Se a solicitação já foi criada (rascunho) antes do envio falhar, o
       // erro tem que voltar para a página dela, não para o formulário em
       // branco — senão o usuário não sabe que um rascunho já existe e, ao
-      // tentar de novo, acaba criando um segundo rascunho órfão.
+      // tentar de novo, acaba criando um segundo rascunho órfão. Nesse caso
+      // não precisa preservar os campos digitados: o rascunho já foi salvo
+      // no banco com eles, então a própria página da solicitação já reflete
+      // o que a pessoa digitou.
       if (solicitacao) {
         redirectComErro(`/solicitacoes/${solicitacao.id}`, toFriendlyError(error));
       }
+      await preservarFormulario(formData);
       redirectComErro("/solicitacoes/nova", toFriendlyError(error));
     }
 
@@ -437,6 +442,7 @@ export const editarEReenviarAction = comUsuarioAutenticado(
       // no reenvio) sempre pode voltar para a própria página da solicitação
       // — o pior caso é ela ficar com os campos editados mas ainda
       // REJEITADO, o que é perfeitamente reenviável de novo.
+      await preservarFormulario(formData);
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }
 
