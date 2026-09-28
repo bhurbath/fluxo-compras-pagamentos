@@ -30,7 +30,11 @@ import { PainelPrestacaoContasAdiantamento } from "../_components/painel-prestac
 import { PainelConfirmarBaixaAdiantamento } from "../_components/painel-confirmar-baixa-adiantamento";
 import { ErroMensagem } from "@/app/_components/erro-mensagem";
 import { getUsuarioAutenticado } from "@/lib/require-usuario";
-import { DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE, obterSolicitacao } from "@/lib/workflow";
+import {
+  DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE,
+  ehAdiantamentoCompradorSolicitante,
+  obterSolicitacao,
+} from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import { listarFuncionarios } from "@/lib/departamentos";
 import { gerarUrlAssinada } from "@/lib/storage";
@@ -99,9 +103,15 @@ export default async function SolicitacaoDetalhePage({
 
   // Numa solicitação sem compra não existe comprador designado — quem
   // corrige e reenvia depois de uma recusa é o próprio solicitante (ver
-  // processarEnvioPagamento em src/lib/workflow.ts).
+  // processarEnvioPagamento em src/lib/workflow.ts). O adiantamento em
+  // "Compras pelo solicitante" nunca chega a ter nota fiscal, método de
+  // pagamento nem CNPJ/CPF do fornecedor coletados (é todo o ponto desse
+  // meio de pagamento) — não há nada que a tela de "corrigir e reenviar"
+  // deixaria corrigir, então essa combinação não tem reenvio: uma recusa do
+  // Financeiro aqui exige abrir uma nova solicitação.
   const podeReenviarParaPagamento =
     solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
+    !ehAdiantamentoCompradorSolicitante(solicitacao) &&
     (solicitacao.semCompra
       ? solicitacao.solicitanteId === usuario.id
       : solicitacao.compradorId === usuario.id);

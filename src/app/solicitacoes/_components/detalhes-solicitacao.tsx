@@ -1,5 +1,6 @@
 import { formatarData, formatarDataCalendario, formatarReais } from "@/lib/format";
-import type { obterSolicitacao } from "@/lib/workflow";
+import { ehAdiantamentoCompradorSolicitante, type obterSolicitacao } from "@/lib/workflow";
+import { StatusSolicitacao } from "@prisma/client";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 import { StatusPill } from "./status-pill";
 import { LinhaDoTempo } from "./linha-do-tempo";
@@ -221,6 +222,14 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.motivoRecusaPagamento}</dd>
           </div>
         )}
+        {solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
+          ehAdiantamentoCompradorSolicitante(solicitacao) && (
+            <div>
+              <dd className="muted">
+                Esse adiantamento não tem correção/reenvio — abra uma nova solicitação.
+              </dd>
+            </div>
+          )}
         {solicitacao.comprador && (
           <div>
             <dt className="muted">Comprador</dt>

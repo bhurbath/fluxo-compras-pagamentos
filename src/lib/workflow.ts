@@ -850,22 +850,17 @@ async function enviarDiretoParaPagamento(
   ]);
 }
 
-// Runs automatically the moment a solicitação reaches APROVADO (called from
-// processarEnvio, aprovarNivel1, and aprovarNivel2 — the only three places
-// that transition can happen). Looks up matriz_comprador by
-// (departamentoId, tipoCompraId); with no match, the request just stays
-// with compradorId null and every Financeiro user is notified to designate
-// one manually via designarCompradorManualmente.
 // Único ponto de verdade pra "isso é um adiantamento em 'Compras pelo
-// solicitante', que pula reto pro Financeiro" — usado tanto na designação
-// automática quanto em confirmarComprovante, abaixo. !semCompra é
-// obrigatório aqui: compradorEhSolicitante + formaPagamento Adiantamento
-// também é alcançável com a caixa "sem compra" marcada manualmente (ver
+// solicitante', que pula reto pro Financeiro" — usado na designação
+// automática, em confirmarComprovante e na tela da solicitação (ver
+// src/app/solicitacoes/[id]/page.tsx). !semCompra é obrigatório aqui:
+// compradorEhSolicitante + formaPagamento Adiantamento também é alcançável
+// com a caixa "sem compra" marcada manualmente (ver
 // CriarSolicitacaoInput.semCompra) — nesse caso não existe comprador
 // designado nenhum (a solicitação já vai direto para pagamento por
 // enviarDiretoParaPagamento, não por este fluxo), então a condição não pode
 // disparar sem essa exclusão.
-function ehAdiantamentoCompradorSolicitante(solicitacao: {
+export function ehAdiantamentoCompradorSolicitante(solicitacao: {
   semCompra: boolean;
   tipoCompra: { compradorEhSolicitante: boolean };
   formaPagamento: FormaPagamento | null;
@@ -877,6 +872,13 @@ function ehAdiantamentoCompradorSolicitante(solicitacao: {
   );
 }
 
+// Runs automatically the moment a solicitação reaches APROVADO (called from
+// processarEnvio, aprovarNivel1, and aprovarNivel2 — the only three places
+// that transition can happen). Looks up matriz_comprador by
+// (departamentoId, tipoCompraId); with no match, the request just stays
+// with compradorId null and every Financeiro user is notified to designate
+// one manually via designarCompradorManualmente.
+//
 // Retorna true quando de fato designou alguém agora (false = já estava
 // designado por outra ação concorrente, ou não há matriz — aguardando
 // designação manual) — usado por designarCompradorEAvancarSeAdiantamento,
