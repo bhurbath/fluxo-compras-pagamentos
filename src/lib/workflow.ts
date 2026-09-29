@@ -165,16 +165,18 @@ function validarCriarSolicitacao(
     }
   }
 
-  // Fornecedor e empresa são dispensados independentemente do tipo de
-  // solicitação (padrão, sem compra, despesa de pessoal, RDV, Caixa Interno
-  // ou Fundo Fixo) — dependem só dessas flags do tipo de compra, checadas
-  // primeiro. RDV, Caixa Interno e Fundo Fixo nunca têm fornecedor (não são
-  // compra de terceiro).
+  // Fornecedor é dispensado independentemente do tipo de solicitação
+  // (padrão, sem compra, despesa de pessoal, RDV, Caixa Interno ou Fundo
+  // Fixo) — depende só dessas flags do tipo de compra, checadas primeiro.
+  // RDV, Caixa Interno, Fundo Fixo e Despesa de Pessoal nunca têm fornecedor
+  // (não são compra de terceiro — ver comentário em
+  // CriarSolicitacaoInput.fornecedor).
   if (
     !tipoCompra.dispensaFornecedorForma &&
     !tipoCompra.rdv &&
     !tipoCompra.caixaInterno &&
     !tipoCompra.fundoFixo &&
+    !tipoCompra.despesaPessoal &&
     !input.fornecedor?.trim()
   ) {
     throw new Error("O fornecedor é obrigatório.");

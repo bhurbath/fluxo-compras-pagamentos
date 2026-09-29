@@ -3472,6 +3472,38 @@ describe("workflow: despesa de pessoal", () => {
     expect(solicitacao.notaFiscalUrls).toEqual(["guia.pdf"]);
   });
 
+  // Regressão: o formulário de despesa de pessoal (ver CamposSolicitacao)
+  // nunca coleta fornecedor — não tem esse campo na tela. Sem esse teste,
+  // toda solicitação de despesa de pessoal real (nunca as de teste, que
+  // sempre passavam um fornecedor "de brinde") quebrava com "O fornecedor
+  // é obrigatório." ao ser criada — validarCriarSolicitacao dispensava
+  // RDV/Caixa Interno/Fundo Fixo do fornecedor, mas não despesaPessoal,
+  // apesar do comentário no próprio tipo CriarSolicitacaoInput.fornecedor
+  // já documentar essa dispensa.
+  it("não exige fornecedor — o formulário nem o coleta", async () => {
+    const solicitante = await criarUsuario("dp2b");
+    const departamento = await criarDepartamento("dp2b");
+    const tipo = await criarTipoCompra("Despesa Pessoal dp2b", { despesaPessoal: true });
+    const categoria = await testDb.categoriaDespesaPessoal.create({
+      data: { nome: "Categoria dp2b" },
+    });
+    const empresa = await testDb.empresa.create({ data: { nome: "Empresa dp2b" } });
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Vale-transporte",
+      valor: "500",
+      empresaId: empresa.id,
+      categoriaDespesaPessoalId: categoria.id,
+      dataVencimento: "2026-09-30",
+      notaFiscalUrls: ["guia.pdf"],
+    });
+
+    expect(solicitacao.fornecedor).toBeNull();
+  });
+
   it("grava nº do pedido e dados de pagamento, ambos opcionais, e mantém método/CNPJ-CPF nulos", async () => {
     const solicitante = await criarUsuario("dp3");
     const departamento = await criarDepartamento("dp3");
