@@ -641,6 +641,39 @@ export async function editarRascunho(id: string, atorId: string, input: CriarSol
   );
 }
 
+// Sem isso, um rascunho criado por engano (tipo errado, duplicado) não tinha
+// como sair da lista de "Minhas solicitações" — só dava para editar ou
+// enviar, nunca descartar. Restrito a RASCUNHO de propósito: uma vez enviada,
+// a solicitação passa a ter histórico relevante para outras pessoas
+// (aprovador, comprador, Financeiro) e sai do fluxo por rejeição ou
+// conclusão, não por exclusão. SolicitacaoHistorico tem FK ON DELETE
+// RESTRICT para solicitacoes — precisa apagar o histórico antes da própria
+// solicitação, daí a transação.
+export async function excluirRascunho(id: string, atorId: string): Promise<void> {
+  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (atorId !== solicitacao.solicitanteId) {
+    throw new Error("Só o solicitante pode excluir essa solicitação.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.RASCUNHO) {
+    throw new Error("Só é possível excluir uma solicitação que está em rascunho.");
+  }
+
+  await getDb().$transaction(async (tx) => {
+    await tx.solicitacaoHistorico.deleteMany({ where: { solicitacaoId: id } });
+    const { count } = await tx.solicitacao.deleteMany({
+      where: { id, status: StatusSolicitacao.RASCUNHO },
+    });
+    if (count === 0) {
+      throw new Error(
+        "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+      );
+    }
+  });
+}
+
 // Looks up which faixa de alçada covers `valor` (both bounds inclusive,
 // matching how faixas are validated/entered in ticket 03) and returns
 // whether it requires level-2 approval. Throws rather than guessing when no

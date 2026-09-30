@@ -17,6 +17,7 @@ import {
   editarRascunhoAction,
   editarRascunhoEEnviarAction,
   enviarParaPagamentoAction,
+  excluirRascunhoAction,
   reenviarParaPagamentoAction,
   submeterPrestacaoContasAdiantamentoAction,
 } from "../actions";
@@ -238,6 +239,7 @@ export default async function SolicitacaoDetalhePage({
             listas={listasParaEdicao}
             salvarAction={editarRascunhoAction}
             enviarAction={editarRascunhoEEnviarAction}
+            excluirAction={excluirRascunhoAction}
             dataVencimentoMinima={dataVencimentoMinima}
             valoresPreservados={valoresPreservados}
           />

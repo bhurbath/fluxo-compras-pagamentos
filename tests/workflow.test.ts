@@ -15,6 +15,7 @@ import {
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
+  excluirRascunho,
   listarMinhasSolicitacoes,
   listarPendentesComprador,
   listarPendentesComprovante,
@@ -1467,6 +1468,46 @@ describe("workflow: editarRascunho", () => {
     ]);
     expect(enviada.status).toBe("ENVIADO");
     expect(enviada.descricao).toBe("Descrição corrigida");
+  });
+});
+
+describe("workflow: excluirRascunho", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  // Regressão: um rascunho criado por engano não tinha como sair de "Minhas
+  // solicitações" — só dava para editar ou enviar, nunca descartar.
+  it("apaga o rascunho e seu histórico", async () => {
+    const { solicitacao, solicitante } = await criarSolicitacaoRascunho("ex1");
+
+    await excluirRascunho(solicitacao.id, solicitante.id);
+
+    const encontrada = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    expect(encontrada).toBeNull();
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+    });
+    expect(historico).toHaveLength(0);
+  });
+
+  it("lança erro se a solicitação não está em rascunho", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("ex2");
+
+    await expect(excluirRascunho(solicitacao.id, solicitante.id)).rejects.toThrow();
+    const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    expect(aindaExiste).not.toBeNull();
+  });
+
+  it("lança erro se quem exclui não é o solicitante", async () => {
+    const { solicitacao } = await criarSolicitacaoRascunho("ex3");
+    const intruso = await criarUsuario("intruso-ex3");
+
+    await expect(excluirRascunho(solicitacao.id, intruso.id)).rejects.toThrow();
+    const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    expect(aindaExiste).not.toBeNull();
   });
 });
 

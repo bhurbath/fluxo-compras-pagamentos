@@ -14,6 +14,7 @@ import {
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
+  excluirRascunho,
   obterSolicitacao,
   reenviarParaPagamento,
   reenviarSolicitacao,
@@ -496,6 +497,21 @@ export const editarRascunhoEEnviarAction = comUsuarioAutenticado(
     }
 
     redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const excluirRascunhoAction = comUsuarioAutenticado(
+  // formData é exigido só para casar com a assinatura que ExcluirButton
+  // espera (form action sempre passa um) — a exclusão não usa nenhum campo.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await excluirRascunho(id, usuario.id);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect("/solicitacoes");
   }
 );
 
