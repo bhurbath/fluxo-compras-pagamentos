@@ -14,6 +14,8 @@ import {
 import {
   confirmarCompraAction,
   editarEReenviarAction,
+  editarRascunhoAction,
+  editarRascunhoEEnviarAction,
   enviarParaPagamentoAction,
   reenviarParaPagamentoAction,
   submeterPrestacaoContasAdiantamentoAction,
@@ -21,6 +23,7 @@ import {
 import { DetalhesSolicitacao } from "../_components/detalhes-solicitacao";
 import { PainelAprovacao } from "../_components/painel-aprovacao";
 import { PainelEdicaoReenvio } from "../_components/painel-edicao-reenvio";
+import { PainelEdicaoRascunho } from "../_components/painel-edicao-rascunho";
 import { PainelDesignacaoComprador } from "../_components/painel-designacao-comprador";
 import { PainelConfirmarCompra } from "../_components/painel-confirmar-compra";
 import { PainelEnviarPagamento } from "../_components/painel-enviar-pagamento";
@@ -89,6 +92,10 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.status === StatusSolicitacao.REJEITADO &&
     solicitacao.solicitanteId === usuario.id;
 
+  const podeEditarRascunho =
+    solicitacao.status === StatusSolicitacao.RASCUNHO &&
+    solicitacao.solicitanteId === usuario.id;
+
   const podeDesignarComprador =
     solicitacao.status === StatusSolicitacao.APROVADO &&
     solicitacao.compradorId === null &&
@@ -141,14 +148,16 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.status === StatusSolicitacao.AGUARDANDO_CONFIRMACAO_BAIXA &&
     usuario.flagFinanceiro;
 
-  // Só busca as listas dos dropdowns quando a seção de edição vai
-  // efetivamente aparecer — evita 6 consultas desnecessárias em toda
-  // visualização de uma solicitação que não está rejeitada. Mesma lógica
-  // para o formulário preservado (ver CamposSolicitacao) — só faz sentido
-  // ler o cookie quando o painel de edição vai de fato aparecer.
-  const [listasParaEdicao, valoresPreservados] = podeEditarEReenviar
-    ? await Promise.all([listarListasSolicitacao(), lerFormularioPreservado()])
-    : [null, undefined];
+  // Só busca as listas dos dropdowns quando alguma seção de edição vai
+  // efetivamente aparecer (rejeitada OU rascunho) — evita 6 consultas
+  // desnecessárias em toda visualização de uma solicitação que não está em
+  // um desses dois estados. Mesma lógica para o formulário preservado (ver
+  // CamposSolicitacao) — só faz sentido ler o cookie quando algum painel de
+  // edição vai de fato aparecer.
+  const [listasParaEdicao, valoresPreservados] =
+    podeEditarEReenviar || podeEditarRascunho
+      ? await Promise.all([listarListasSolicitacao(), lerFormularioPreservado()])
+      : [null, undefined];
 
   // Ver comentário em CamposSolicitacao — usado só como `min` do
   // <input type="date"> de "Compras pelo solicitante"; calculado a partir
@@ -213,11 +222,22 @@ export default async function SolicitacaoDetalhePage({
           />
         )}
 
-        {listasParaEdicao && (
+        {podeEditarEReenviar && listasParaEdicao && (
           <PainelEdicaoReenvio
             solicitacao={solicitacao}
             listas={listasParaEdicao}
             action={editarEReenviarAction}
+            dataVencimentoMinima={dataVencimentoMinima}
+            valoresPreservados={valoresPreservados}
+          />
+        )}
+
+        {podeEditarRascunho && listasParaEdicao && (
+          <PainelEdicaoRascunho
+            solicitacao={solicitacao}
+            listas={listasParaEdicao}
+            salvarAction={editarRascunhoAction}
+            enviarAction={editarRascunhoEEnviarAction}
             dataVencimentoMinima={dataVencimentoMinima}
             valoresPreservados={valoresPreservados}
           />

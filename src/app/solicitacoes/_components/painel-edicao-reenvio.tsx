@@ -1,4 +1,5 @@
 import { CamposSolicitacao } from "./campos-solicitacao";
+import { construirDefaultValuesSolicitacao } from "./default-values-solicitacao";
 import type { listarListasSolicitacao } from "@/lib/solicitacao-listas";
 import type { obterSolicitacao } from "@/lib/workflow";
 
@@ -29,35 +30,7 @@ export function PainelEdicaoReenvio({
         encType="multipart/form-data"
       >
         <CamposSolicitacao
-          defaultValues={{
-            descricao: solicitacao.descricao,
-            valor: solicitacao.valor.toString(),
-            tipoCompraId: solicitacao.tipoCompraId,
-            fornecedor: solicitacao.fornecedor,
-            formaPagamento: solicitacao.formaPagamento,
-            centroCustoId: solicitacao.centroCustoId,
-            centroResultadoId: solicitacao.centroResultadoId,
-            contaContabilId: solicitacao.contaContabilId,
-            empresaId: solicitacao.empresaId,
-            linkCompra: solicitacao.linkCompra,
-            informacoesComplementares: solicitacao.informacoesComplementares,
-            temCotacao: Boolean(solicitacao.cotacaoUrl),
-            semCompra: solicitacao.semCompra,
-            metodoPagamento: solicitacao.metodoPagamento,
-            dadosPagamento: solicitacao.dadosPagamento,
-            fornecedorDocumento: solicitacao.fornecedorDocumento,
-            temAnexo: solicitacao.notaFiscalUrls.length > 0,
-            categoriaDespesaPessoalId: solicitacao.categoriaDespesaPessoalId,
-            numeroPedido: solicitacao.numeroPedido,
-            dataVencimento: solicitacao.dataVencimento?.toISOString().slice(0, 10) ?? null,
-            valorReembolsar: solicitacao.valorReembolsar?.toString() ?? null,
-            valorCartaoOnfly: solicitacao.valorCartaoOnfly?.toString() ?? null,
-            dataRdv: solicitacao.dataRdv?.toISOString().slice(0, 10) ?? null,
-            numeroRdv: solicitacao.numeroRdv,
-            nomeColaboradorRdv: solicitacao.nomeColaboradorRdv,
-            possuiAdiantamento: solicitacao.possuiAdiantamento,
-            dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
-          }}
+          defaultValues={construirDefaultValuesSolicitacao(solicitacao)}
           valoresPreservados={valoresPreservados}
           {...listas}
           dataVencimentoMinima={dataVencimentoMinima}

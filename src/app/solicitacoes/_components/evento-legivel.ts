@@ -4,6 +4,7 @@
 // entrar aqui, ele aparece com o nome bruto em vez de sumir.
 export const EVENTO_LEGIVEL: Record<string, string> = {
   rascunho_criado: "Rascunho criado",
+  rascunho_editado: "Rascunho editado",
   enviado: "Enviado para aprovação",
   reenviado: "Reenviado para aprovação",
   aguardando_nivel2: "Aprovado (nível 1) — aguardando aprovação do diretor",

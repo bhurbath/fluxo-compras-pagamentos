@@ -11,6 +11,7 @@ import {
   confirmarCompra,
   criarSolicitacao,
   designarCompradorManualmente,
+  editarRascunho,
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
@@ -149,6 +150,24 @@ async function criarSolicitacaoEnviada(
     ...campos,
   });
   const solicitacao = await enviarSolicitacao(rascunho.id);
+  return { solicitacao, departamento, solicitante };
+}
+
+// A bare RASCUNHO, before enviarSolicitacao — the starting point every
+// editarRascunho test needs.
+async function criarSolicitacaoRascunho(sufixo: string) {
+  const departamento = await criarDepartamento(sufixo);
+  const solicitante = await criarUsuario(`sol-${sufixo}`);
+  const tipo = await criarTipoCompra(`Tipo ${sufixo}`);
+  const campos = await criarCamposObrigatorios(sufixo);
+  const solicitacao = await criarSolicitacao({
+    solicitanteId: solicitante.id,
+    departamentoId: departamento.id,
+    tipoCompraId: tipo.id,
+    descricao: "Compra de teste",
+    valor: "500",
+    ...campos,
+  });
   return { solicitacao, departamento, solicitante };
 }
 
@@ -1365,6 +1384,89 @@ describe("workflow: editarSolicitacao", () => {
       "rejeitado",
       "editado_apos_rejeicao",
     ]);
+  });
+});
+
+describe("workflow: editarRascunho", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  // Regressão: "Salvar rascunho" não tinha nenhuma tela que permitisse
+  // retomar o rascunho depois — editarSolicitacao só aceitava REJEITADO,
+  // então um rascunho salvo ficava permanentemente preso, sem forma de
+  // editar nem enviar.
+  it("edita os campos de um rascunho, sem mudar o status", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRascunho("er1");
+    const novoTipo = await criarTipoCompra("Novo tipo er1");
+
+    const editada = await editarRascunho(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, {
+        tipoCompraId: novoTipo.id,
+        descricao: "Descrição corrigida",
+        valor: "600",
+      })
+    );
+
+    expect(editada.descricao).toBe("Descrição corrigida");
+    expect(editada.valor.toString()).toBe("600");
+    expect(editada.tipoCompraId).toBe(novoTipo.id);
+    expect(editada.status).toBe("RASCUNHO");
+  });
+
+  it("lança erro se a solicitação não está em rascunho", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("er2");
+
+    await expect(
+      editarRascunho(
+        solicitacao.id,
+        solicitante.id,
+        construirInputEdicao(solicitacao, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem edita não é o solicitante", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao } = await criarSolicitacaoRascunho("er3");
+    const intruso = await criarUsuario("intruso-er3");
+
+    await expect(
+      editarRascunho(
+        solicitacao.id,
+        intruso.id,
+        construirInputEdicao(solicitacao, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+  });
+
+  it("grava um evento de histórico ao editar, e continua enviável em seguida", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRascunho("er4");
+
+    await editarRascunho(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Descrição corrigida" })
+    );
+    const enviada = await enviarSolicitacao(solicitacao.id);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "rascunho_editado",
+      "enviado",
+    ]);
+    expect(enviada.status).toBe("ENVIADO");
+    expect(enviada.descricao).toBe("Descrição corrigida");
   });
 });
 

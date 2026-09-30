@@ -10,6 +10,7 @@ import { obterTipoCompra } from "@/lib/tipos-compra";
 import {
   confirmarCompra,
   criarSolicitacao,
+  editarRascunho,
   editarSolicitacao,
   enviarParaPagamento,
   enviarSolicitacao,
@@ -442,6 +443,54 @@ export const editarEReenviarAction = comUsuarioAutenticado(
       // no reenvio) sempre pode voltar para a própria página da solicitação
       // — o pior caso é ela ficar com os campos editados mas ainda
       // REJEITADO, o que é perfeitamente reenviável de novo.
+      await preservarFormulario(formData);
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// As duas ações de PainelEdicaoRascunho — mesmo raciocínio de
+// editarEReenviarAction acima (sem risco de órfão, sempre volta pra própria
+// página em caso de erro), só que a partir de RASCUNHO em vez de REJEITADO,
+// e com "salvar sem enviar" como opção própria (diferente de REJEITADO, que
+// sempre reenvia).
+export const editarRascunhoAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    try {
+      const atual = await obterSolicitacao(id);
+      const input = await parseSolicitacaoForm(
+        usuario,
+        formData,
+        id,
+        atual?.notaFiscalUrls ?? [],
+        atual?.cotacaoUrl ?? null
+      );
+      await editarRascunho(id, usuario.id, input);
+    } catch (error) {
+      await preservarFormulario(formData);
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const editarRascunhoEEnviarAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    try {
+      const atual = await obterSolicitacao(id);
+      const input = await parseSolicitacaoForm(
+        usuario,
+        formData,
+        id,
+        atual?.notaFiscalUrls ?? [],
+        atual?.cotacaoUrl ?? null
+      );
+      await editarRascunho(id, usuario.id, input);
+      await enviarSolicitacao(id);
+    } catch (error) {
       await preservarFormulario(formData);
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

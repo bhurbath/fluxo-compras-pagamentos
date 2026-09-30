@@ -558,10 +558,22 @@ export async function criarSolicitacao(input: CriarSolicitacaoInput) {
   return solicitacao;
 }
 
-export async function editarSolicitacao(
+// Compartilhado por editarSolicitacao (REJEITADO → mesmo status, campos
+// corrigidos) e editarRascunho (RASCUNHO → mesmo status) — mesma validação e
+// mesmo mapeamento de campos nos dois casos; só o status de origem esperado
+// e o nome do evento de histórico mudam, então cada caso vira um wrapper
+// fino em vez de um statusEsperado dinâmico (ver comentário de
+// atualizarStatusComGuarda, acima). Nenhum dos dois muda o status da
+// solicitação — quem faz isso é reenviarSolicitacao/enviarSolicitacao,
+// chamado à parte por quem invoca (ver editarEReenviarAction/
+// editarRascunhoEEnviarAction em src/app/solicitacoes/actions.ts).
+async function processarEdicaoSolicitacao(
   id: string,
   atorId: string,
-  input: CriarSolicitacaoInput
+  input: CriarSolicitacaoInput,
+  statusOrigem: typeof StatusSolicitacao.RASCUNHO | typeof StatusSolicitacao.REJEITADO,
+  eventoEdicao: string,
+  mensagemStatusInvalido: string
 ) {
   const tipoCompra = await obterTipoCompraOuLancar(input.tipoCompraId);
   validarCriarSolicitacao(input, tipoCompra);
@@ -576,24 +588,57 @@ export async function editarSolicitacao(
   if (atorId !== solicitacao.solicitanteId) {
     throw new Error("Só o solicitante pode editar essa solicitação.");
   }
-  if (solicitacao.status !== StatusSolicitacao.REJEITADO) {
-    throw new Error("Só é possível editar uma solicitação que foi rejeitada.");
+  if (solicitacao.status !== statusOrigem) {
+    throw new Error(mensagemStatusInvalido);
   }
 
   // input.solicitanteId é ignorado de propósito — editar corrige os campos
   // do pedido, não pode trocar quem é o dono dele. motivoRejeicao também
-  // não é tocado aqui: ele continua visível até o reenvio de fato acontecer
-  // (ver reenviarSolicitacao), não antes disso ter sido confirmado.
+  // não é tocado aqui (relevante só no caso REJEITADO): ele continua visível
+  // até o reenvio de fato acontecer (ver reenviarSolicitacao), não antes
+  // disso ter sido confirmado.
   await atualizarStatusComGuarda(
     id,
-    StatusSolicitacao.REJEITADO,
+    statusOrigem,
     mapCamposSolicitacao(input, tipoCompra),
     "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
-  await registrarHistorico(id, "editado_apos_rejeicao", atorId);
+  await registrarHistorico(id, eventoEdicao, atorId);
 
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
+export async function editarSolicitacao(
+  id: string,
+  atorId: string,
+  input: CriarSolicitacaoInput
+) {
+  return processarEdicaoSolicitacao(
+    id,
+    atorId,
+    input,
+    StatusSolicitacao.REJEITADO,
+    "editado_apos_rejeicao",
+    "Só é possível editar uma solicitação que foi rejeitada."
+  );
+}
+
+// Sem isso, "Salvar rascunho" era um beco sem saída: a tela de detalhe só
+// oferecia edição para REJEITADO, nunca para RASCUNHO — um rascunho salvo
+// não tinha como ser retomado nem enviado depois. Ver
+// editarRascunhoAction/editarRascunhoEEnviarAction em
+// src/app/solicitacoes/actions.ts para os dois botões (salvar de novo como
+// rascunho, ou editar e já enviar).
+export async function editarRascunho(id: string, atorId: string, input: CriarSolicitacaoInput) {
+  return processarEdicaoSolicitacao(
+    id,
+    atorId,
+    input,
+    StatusSolicitacao.RASCUNHO,
+    "rascunho_editado",
+    "Só é possível editar uma solicitação que está em rascunho."
+  );
 }
 
 // Looks up which faixa de alçada covers `valor` (both bounds inclusive,
