@@ -2,16 +2,21 @@
 
 import { useTransition } from "react";
 
-// Shared confirm-and-pending delete button for every destructive action in
-// the admin panel — first written for faixas de alçada (ticket 03), now
-// generalized so tipos de compra and matriz de comprador (ticket 04) don't
-// each reimplement the same confirm()/disabled-state logic.
+// Shared confirm-and-pending button for every destructive/terminal action —
+// first written for faixas de alçada (ticket 03) só para "Excluir", agora
+// também usado fora do admin (ex.: excluir/encerrar uma solicitação) — daí
+// label/labelPendente serem configuráveis em vez de fixos, sem quebrar quem
+// já chama sem passá-los.
 export function ExcluirButton({
   action,
   confirmMessage,
+  label = "Excluir",
+  labelPendente = "Excluindo…",
 }: {
   action: (formData: FormData) => Promise<void>;
   confirmMessage: string;
+  label?: string;
+  labelPendente?: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -27,7 +32,7 @@ export function ExcluirButton({
         });
       }}
     >
-      {pending ? "Excluindo…" : "Excluir"}
+      {pending ? labelPendente : label}
     </button>
   );
 }

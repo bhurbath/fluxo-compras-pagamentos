@@ -12,6 +12,8 @@ import {
   criarSolicitacao,
   editarRascunho,
   editarSolicitacao,
+  encerrarSolicitacaoPagamentoRecusado,
+  encerrarSolicitacaoRejeitada,
   enviarParaPagamento,
   enviarSolicitacao,
   excluirRascunho,
@@ -512,6 +514,36 @@ export const excluirRascunhoAction = comUsuarioAutenticado(
     }
 
     redirect("/solicitacoes");
+  }
+);
+
+// Ambas usam ExcluirButton (mesmo confirm()+pending de "Excluir rascunho"),
+// só que redirecionando de volta para a própria solicitação em vez de para a
+// listagem — encerrada, ela continua visível (com o novo status CANCELADO),
+// diferente de um rascunho excluído, que deixa de existir.
+export const encerrarSolicitacaoRejeitadaAction = comUsuarioAutenticado(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await encerrarSolicitacaoRejeitada(id, usuario.id);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+export const encerrarSolicitacaoPagamentoRecusadoAction = comUsuarioAutenticado(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await encerrarSolicitacaoPagamentoRecusado(id, usuario.id);
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
   }
 );
 

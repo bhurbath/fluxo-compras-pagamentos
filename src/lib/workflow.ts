@@ -674,6 +674,85 @@ export async function excluirRascunho(id: string, atorId: string): Promise<void>
   });
 }
 
+// Compartilhado por encerrarSolicitacaoRejeitada (REJEITADO → CANCELADO) e
+// encerrarSolicitacaoPagamentoRecusado (PAGAMENTO_RECUSADO → CANCELADO) —
+// mesmo padrão de processarEdicaoSolicitacao/processarEnvioPagamento: uma
+// rejeição ou uma recusa de pagamento podem ser corrigidas e reenviadas, mas
+// sem isso não havia como desistir — a solicitação ficava como pendência
+// para sempre (na fila do Financeiro, no relatório de SLA) até alguém
+// decidir reenviar. "Encerrar" é a saída: cada wrapper exportado só fixa de
+// qual status ela parte, quem tem permissão para agir, o nome do evento e as
+// mensagens de erro.
+async function processarEncerramento(
+  id: string,
+  atorId: string,
+  statusOrigem: typeof StatusSolicitacao.REJEITADO | typeof StatusSolicitacao.PAGAMENTO_RECUSADO,
+  temPermissao: (solicitacao: {
+    solicitanteId: string;
+    compradorId: string | null;
+    semCompra: boolean;
+  }) => boolean,
+  mensagemSemPermissao: string,
+  eventoEncerramento: string,
+  mensagemStatusInvalido: string
+): Promise<void> {
+  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (!temPermissao(solicitacao)) {
+    throw new Error(mensagemSemPermissao);
+  }
+  if (solicitacao.status !== statusOrigem) {
+    throw new Error(mensagemStatusInvalido);
+  }
+
+  await atualizarStatusComGuarda(
+    id,
+    statusOrigem,
+    { status: StatusSolicitacao.CANCELADO },
+    "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+  await registrarHistorico(id, eventoEncerramento, atorId);
+}
+
+export async function encerrarSolicitacaoRejeitada(id: string, atorId: string): Promise<void> {
+  return processarEncerramento(
+    id,
+    atorId,
+    StatusSolicitacao.REJEITADO,
+    (solicitacao) => atorId === solicitacao.solicitanteId,
+    "Só o solicitante pode encerrar essa solicitação.",
+    "encerrado_apos_rejeicao",
+    "Só é possível encerrar uma solicitação que foi rejeitada."
+  );
+}
+
+// Mesma regra de posse de processarEnvioPagamento (podeEnviar): numa
+// solicitação sem compra quem pode agir é o solicitante; nas demais, o
+// comprador designado. Isso já cobre de propósito o adiantamento em "Compras
+// pelo solicitante" (TipoCompra.compradorEhSolicitante) — ali não existe
+// reenvio após recusa (ver podeReenviarParaPagamento em [id]/page.tsx), só
+// encerrar ou abrir uma solicitação nova, e o comprador designado é o
+// próprio solicitante nesse caso, então a checagem de comprador basta.
+export async function encerrarSolicitacaoPagamentoRecusado(
+  id: string,
+  atorId: string
+): Promise<void> {
+  return processarEncerramento(
+    id,
+    atorId,
+    StatusSolicitacao.PAGAMENTO_RECUSADO,
+    (solicitacao) =>
+      solicitacao.semCompra
+        ? atorId === solicitacao.solicitanteId
+        : atorId === solicitacao.compradorId,
+    "Só quem pode reenviar essa solicitação para pagamento também pode encerrá-la.",
+    "pagamento_recusado_encerrado",
+    "Só é possível encerrar uma solicitação com pagamento recusado."
+  );
+}
+
 // Looks up which faixa de alçada covers `valor` (both bounds inclusive,
 // matching how faixas are validated/entered in ticket 03) and returns
 // whether it requires level-2 approval. Throws rather than guessing when no

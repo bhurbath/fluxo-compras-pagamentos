@@ -14,6 +14,7 @@ export const STATUS_LEGIVEL: Record<string, string> = {
   AGUARDANDO_PRESTACAO_CONTAS: "Aguardando prestação de contas",
   AGUARDANDO_CONFIRMACAO_BAIXA: "Aguardando confirmação da baixa",
   PAGO: "Pago",
+  CANCELADO: "Cancelado",
 };
 
 // Tom visual do status na UI (ver StatusPill) — mesma ideia do
@@ -31,4 +32,5 @@ export const STATUS_TONE: Record<string, "progress" | "success" | "danger" | und
   AGUARDANDO_PRESTACAO_CONTAS: "progress",
   AGUARDANDO_CONFIRMACAO_BAIXA: "progress",
   PAGO: "success",
+  CANCELADO: "danger",
 };

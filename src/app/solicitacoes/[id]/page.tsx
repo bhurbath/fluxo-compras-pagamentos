@@ -16,11 +16,14 @@ import {
   editarEReenviarAction,
   editarRascunhoAction,
   editarRascunhoEEnviarAction,
+  encerrarSolicitacaoPagamentoRecusadoAction,
+  encerrarSolicitacaoRejeitadaAction,
   enviarParaPagamentoAction,
   excluirRascunhoAction,
   reenviarParaPagamentoAction,
   submeterPrestacaoContasAdiantamentoAction,
 } from "../actions";
+import { ExcluirButton } from "@/app/admin/_components/excluir-button";
 import { DetalhesSolicitacao } from "../_components/detalhes-solicitacao";
 import { PainelAprovacao } from "../_components/painel-aprovacao";
 import { PainelEdicaoReenvio } from "../_components/painel-edicao-reenvio";
@@ -93,6 +96,11 @@ export default async function SolicitacaoDetalhePage({
     solicitacao.status === StatusSolicitacao.REJEITADO &&
     solicitacao.solicitanteId === usuario.id;
 
+  // Mesma permissão de podeEditarEReenviar — quem pode corrigir e reenviar
+  // também pode desistir e encerrar em vez disso (ver
+  // encerrarSolicitacaoRejeitada em workflow.ts).
+  const podeEncerrarRejeitado = podeEditarEReenviar;
+
   const podeEditarRascunho =
     solicitacao.status === StatusSolicitacao.RASCUNHO &&
     solicitacao.solicitanteId === usuario.id;
@@ -121,6 +129,16 @@ export default async function SolicitacaoDetalhePage({
   const podeReenviarParaPagamento =
     solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
     !ehAdiantamentoCompradorSolicitante(solicitacao) &&
+    (solicitacao.semCompra
+      ? solicitacao.solicitanteId === usuario.id
+      : solicitacao.compradorId === usuario.id);
+
+  // Mesma regra de posse, mas SEM a exclusão de ehAdiantamentoCompradorSolicitante
+  // — ali não existe reenvio (ver comentário acima), então encerrar é a
+  // única saída além de abrir uma solicitação nova (ver
+  // encerrarSolicitacaoPagamentoRecusado em workflow.ts).
+  const podeEncerrarPagamentoRecusado =
+    solicitacao.status === StatusSolicitacao.PAGAMENTO_RECUSADO &&
     (solicitacao.semCompra
       ? solicitacao.solicitanteId === usuario.id
       : solicitacao.compradorId === usuario.id);
@@ -233,6 +251,20 @@ export default async function SolicitacaoDetalhePage({
           />
         )}
 
+        {podeEncerrarRejeitado && (
+          <div className="card-block">
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              Não vai corrigir e reenviar? Você pode encerrar esta solicitação em vez disso.
+            </p>
+            <ExcluirButton
+              action={encerrarSolicitacaoRejeitadaAction.bind(null, solicitacao.id)}
+              confirmMessage="Encerrar esta solicitação? Essa ação não pode ser desfeita."
+              label="Encerrar solicitação"
+              labelPendente="Encerrando…"
+            />
+          </div>
+        )}
+
         {podeEditarRascunho && listasParaEdicao && (
           <PainelEdicaoRascunho
             solicitacao={solicitacao}
@@ -282,6 +314,22 @@ export default async function SolicitacaoDetalhePage({
               solicitacao.tipoCompra.adiantamentoIndustrial
             }
           />
+        )}
+
+        {podeEncerrarPagamentoRecusado && (
+          <div className="card-block">
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              {podeReenviarParaPagamento
+                ? "Não vai corrigir e reenviar? Você pode encerrar esta solicitação em vez disso."
+                : "Essa combinação não permite reenviar para pagamento — abra uma nova solicitação, ou encerre esta."}
+            </p>
+            <ExcluirButton
+              action={encerrarSolicitacaoPagamentoRecusadoAction.bind(null, solicitacao.id)}
+              confirmMessage="Encerrar esta solicitação? Essa ação não pode ser desfeita."
+              label="Encerrar solicitação"
+              labelPendente="Encerrando…"
+            />
+          </div>
         )}
 
         {podeAprovarPagamento && (

@@ -36,7 +36,12 @@ export default async function RelatorioSlaPage({
     getDb().solicitacao.findMany({
       where: {
         status: {
-          notIn: [StatusSolicitacao.PAGO, StatusSolicitacao.RASCUNHO, StatusSolicitacao.REJEITADO],
+          notIn: [
+            StatusSolicitacao.PAGO,
+            StatusSolicitacao.RASCUNHO,
+            StatusSolicitacao.REJEITADO,
+            StatusSolicitacao.CANCELADO,
+          ],
         },
       },
       include: { historico: { orderBy: { criadoEm: "asc" } } },

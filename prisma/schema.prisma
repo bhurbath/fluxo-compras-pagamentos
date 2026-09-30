@@ -315,6 +315,13 @@ enum StatusSolicitacao {
   // (ver confirmarBaixaAdiantamento) — só então a solicitação vai para PAGO.
   AGUARDANDO_CONFIRMACAO_BAIXA
   PAGO
+  // Terminal, alternativo a PAGO — quem poderia corrigir e reenviar uma
+  // solicitação REJEITADA ou com PAGAMENTO_RECUSADO desiste em vez disso
+  // (ver encerrarSolicitacaoRejeitada/encerrarSolicitacaoPagamentoRecusado em
+  // workflow.ts). Sem isso, essas duas situações ficavam como pendência
+  // permanente (fila do Financeiro, relatório de SLA) sem nenhuma saída
+  // além de corrigir e reenviar.
+  CANCELADO
 }
 
 model Solicitacao {

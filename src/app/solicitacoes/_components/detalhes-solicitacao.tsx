@@ -226,7 +226,8 @@ export function DetalhesSolicitacao({
           ehAdiantamentoCompradorSolicitante(solicitacao) && (
             <div>
               <dd className="muted">
-                Esse adiantamento não tem correção/reenvio — abra uma nova solicitação.
+                Esse adiantamento não tem correção/reenvio — abra uma nova solicitação, ou
+                encerre esta.
               </dd>
             </div>
           )}

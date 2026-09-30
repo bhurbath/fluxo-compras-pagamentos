@@ -13,6 +13,8 @@ import {
   designarCompradorManualmente,
   editarRascunho,
   editarSolicitacao,
+  encerrarSolicitacaoPagamentoRecusado,
+  encerrarSolicitacaoRejeitada,
   enviarParaPagamento,
   enviarSolicitacao,
   excluirRascunho,
@@ -251,6 +253,17 @@ async function criarSolicitacaoAguardandoPagamento(
     fornecedorDocumento: "12.345.678/0001-99",
   });
   return { solicitacao: aguardandoPagamento, comprador, solicitante };
+}
+
+// A bare PAGAMENTO_RECUSADO, recusado pelo Financeiro — o ponto de partida
+// de todo teste de encerrarSolicitacaoPagamentoRecusado.
+async function criarSolicitacaoPagamentoRecusado(sufixo: string) {
+  const { solicitacao, comprador, solicitante } =
+    await criarSolicitacaoAguardandoPagamento(sufixo);
+  const financeiro = await criarUsuario(`fin-${sufixo}`);
+  await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+  const recusada = await recusarPagamento(solicitacao.id, financeiro.id, "Motivo qualquer");
+  return { solicitacao: recusada, comprador, solicitante };
 }
 
 async function criarEntradaMatriz(
@@ -1508,6 +1521,115 @@ describe("workflow: excluirRascunho", () => {
     await expect(excluirRascunho(solicitacao.id, intruso.id)).rejects.toThrow();
     const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
     expect(aindaExiste).not.toBeNull();
+  });
+});
+
+describe("workflow: encerrarSolicitacaoRejeitada", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  // Regressão: uma solicitação rejeitada só podia ser corrigida e
+  // reenviada — sem forma de desistir, ficava como pendência permanente
+  // (fila do Financeiro, relatório de SLA) até alguém decidir reenviar.
+  it("encerra a solicitação, indo para CANCELADO", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("enc1");
+
+    await encerrarSolicitacaoRejeitada(solicitacao.id, solicitante.id);
+
+    const atualizada = await testDb.solicitacao.findUniqueOrThrow({
+      where: { id: solicitacao.id },
+    });
+    expect(atualizada.status).toBe("CANCELADO");
+  });
+
+  it("grava um evento de histórico ao encerrar", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("enc2");
+
+    await encerrarSolicitacaoRejeitada(solicitacao.id, solicitante.id);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("encerrado_apos_rejeicao");
+    expect(historico.at(-1)?.atorId).toBe(solicitante.id);
+  });
+
+  it("lança erro se a solicitação não está rejeitada", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("enc3");
+
+    await expect(
+      encerrarSolicitacaoRejeitada(solicitacao.id, solicitante.id)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem encerra não é o solicitante", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao } = await criarSolicitacaoRejeitada("enc4");
+    const intruso = await criarUsuario("intruso-enc4");
+
+    await expect(encerrarSolicitacaoRejeitada(solicitacao.id, intruso.id)).rejects.toThrow();
+    const aindaRejeitada = await testDb.solicitacao.findUniqueOrThrow({
+      where: { id: solicitacao.id },
+    });
+    expect(aindaRejeitada.status).toBe("REJEITADO");
+  });
+});
+
+describe("workflow: encerrarSolicitacaoPagamentoRecusado", () => {
+  beforeEach(async () => {
+    await resetDb();
+    setEmailSender(new FakeEmailSender());
+  });
+
+  it("encerra a solicitação, indo para CANCELADO", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoPagamentoRecusado("enc5");
+
+    await encerrarSolicitacaoPagamentoRecusado(solicitacao.id, comprador.id);
+
+    const atualizada = await testDb.solicitacao.findUniqueOrThrow({
+      where: { id: solicitacao.id },
+    });
+    expect(atualizada.status).toBe("CANCELADO");
+  });
+
+  it("grava um evento de histórico ao encerrar", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoPagamentoRecusado("enc6");
+
+    await encerrarSolicitacaoPagamentoRecusado(solicitacao.id, comprador.id);
+
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("pagamento_recusado_encerrado");
+    expect(historico.at(-1)?.atorId).toBe(comprador.id);
+  });
+
+  it("lança erro se a solicitação não está com pagamento recusado", async () => {
+    const { solicitacao, comprador } = await criarSolicitacaoAguardandoPagamento("enc7");
+
+    await expect(
+      encerrarSolicitacaoPagamentoRecusado(solicitacao.id, comprador.id)
+    ).rejects.toThrow();
+  });
+
+  it("lança erro se quem encerra não é o comprador designado", async () => {
+    const { solicitacao } = await criarSolicitacaoPagamentoRecusado("enc8");
+    const intruso = await criarUsuario("intruso-enc8");
+
+    await expect(
+      encerrarSolicitacaoPagamentoRecusado(solicitacao.id, intruso.id)
+    ).rejects.toThrow();
+    const aindaRecusado = await testDb.solicitacao.findUniqueOrThrow({
+      where: { id: solicitacao.id },
+    });
+    expect(aindaRecusado.status).toBe("PAGAMENTO_RECUSADO");
   });
 });
 

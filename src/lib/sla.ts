@@ -33,12 +33,14 @@ const EVENTO_PARA_CATEGORIA: Record<string, CategoriaSla | null> = {
   editado_apos_rejeicao: null,
   aprovado: null,
   rejeitado: "correcaoRejeicao",
+  encerrado_apos_rejeicao: null,
   comprador_designado: "compradorExecutarCompra",
   aguardando_designacao_manual: "designacaoManual",
   compra_confirmada: "compradorEnviarPagamento",
   enviado_para_pagamento: "financeiroRegistrarPagamento",
   reenviado_para_pagamento: "financeiroRegistrarPagamento",
   pagamento_recusado: "correcaoPagamentoRecusado",
+  pagamento_recusado_encerrado: null,
   aguardando_comprovante: "financeiroAnexarComprovante",
   comprovante_anexado: "compradorPrestarContas",
   prestacao_contas_adiantamento_enviada: "financeiroConfirmarBaixa",
@@ -275,10 +277,11 @@ export const DONO_LEGIVEL: Record<DonoFila, string> = {
 // De quem é a bola AGORA, dado o status atual — não usa o histórico, só o
 // status (e se há comprador designado), já que é sobre o presente, não
 // sobre o que já aconteceu. RASCUNHO fica de fora (ainda nem foi enviada,
-// não é fila de ninguém) e PAGO/REJEITADO também (rejeitado só volta à
-// fila quando o solicitante reenviar — até lá está com ele, mas isso já é
-// coberto pela tela "Minhas solicitações" do próprio solicitante, não
-// interessa a este relatório do Financeiro).
+// não é fila de ninguém) e PAGO/REJEITADO/CANCELADO também (rejeitado só
+// volta à fila quando o solicitante reenviar — até lá está com ele, mas isso
+// já é coberto pela tela "Minhas solicitações" do próprio solicitante, não
+// interessa a este relatório do Financeiro; cancelado é terminal, como
+// pago).
 export function donoAtual(
   status: StatusSolicitacao,
   compradorId: string | null
