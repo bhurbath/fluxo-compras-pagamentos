@@ -151,6 +151,18 @@ export default async function Home() {
                       Exportar solicitações
                     </Link>
                     <Link
+                      href="/relatorios/sla"
+                      className="flex items-center justify-between"
+                      style={{
+                        padding: "0.7rem 0",
+                        borderBottom: "1px solid var(--line-soft)",
+                        fontWeight: 500,
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      SLA de aprovação e pagamento
+                    </Link>
+                    <Link
                       href="/admin/departamentos"
                       className="flex items-center justify-between"
                       style={{ padding: "0.7rem 0", fontWeight: 500, fontSize: "0.9rem" }}
