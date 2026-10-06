@@ -3215,6 +3215,74 @@ describe("workflow: listarMinhasSolicitacoes", () => {
 
     expect(minhas).toHaveLength(0);
   });
+
+  it("filtra por status", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: enviada, solicitante } = await criarSolicitacaoEnviada("ms5");
+    const campos = await criarCamposObrigatorios("ms5b");
+    const tipo = await criarTipoCompra("Tipo ms5b");
+    const rascunho = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: enviada.departamentoId,
+      tipoCompraId: tipo.id,
+      descricao: "Outro",
+      valor: "100",
+      ...campos,
+    });
+
+    const soRascunhos = await listarMinhasSolicitacoes(solicitante.id, { status: "RASCUNHO" });
+    const soEnviadas = await listarMinhasSolicitacoes(solicitante.id, { status: "ENVIADO" });
+
+    expect(soRascunhos.map((s) => s.id)).toEqual([rascunho.id]);
+    expect(soEnviadas.map((s) => s.id)).toEqual([enviada.id]);
+  });
+
+  it("filtra por período de criação, com os dois extremos inclusivos", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: antiga, solicitante } = await criarSolicitacaoEnviada("ms6");
+    const { solicitacao: recente } = await criarSolicitacaoEnviada("ms7", {
+      solicitanteId: solicitante.id,
+    });
+    await testDb.solicitacao.update({
+      where: { id: antiga.id },
+      data: { criadoEm: new Date("2026-01-10T12:00:00.000") },
+    });
+    await testDb.solicitacao.update({
+      where: { id: recente.id },
+      data: { criadoEm: new Date("2026-03-20T12:00:00.000") },
+    });
+
+    const soAntiga = await listarMinhasSolicitacoes(solicitante.id, {
+      de: new Date("2026-01-10T00:00:00.000"),
+      ate: new Date("2026-02-01T23:59:59.999"),
+    });
+    const soRecente = await listarMinhasSolicitacoes(solicitante.id, {
+      de: new Date("2026-03-01T00:00:00.000"),
+    });
+
+    expect(soAntiga.map((s) => s.id)).toEqual([antiga.id]);
+    expect(soRecente.map((s) => s.id)).toEqual([recente.id]);
+  });
+
+  it("busca por trecho da descrição, sem diferenciar maiúsculas de minúsculas", async () => {
+    await criarFaixa("0", null, false);
+    const { solicitacao: notebook, solicitante } = await criarSolicitacaoEnviada("ms8");
+    const { solicitacao: cadeira } = await criarSolicitacaoEnviada("ms9", {
+      solicitanteId: solicitante.id,
+    });
+    await testDb.solicitacao.update({
+      where: { id: notebook.id },
+      data: { descricao: "Notebook para o time comercial" },
+    });
+    await testDb.solicitacao.update({
+      where: { id: cadeira.id },
+      data: { descricao: "Cadeira ergonômica" },
+    });
+
+    const resultado = await listarMinhasSolicitacoes(solicitante.id, { busca: "  NOTEBOOK " });
+
+    expect(resultado.map((s) => s.id)).toEqual([notebook.id]);
+  });
 });
 
 describe("workflow: listarPendentesComprador", () => {

@@ -2116,9 +2116,26 @@ export async function confirmarBaixaAdiantamento(id: string, atorId: string) {
 // status (inclusive RASCUNHO, que só o próprio solicitante pode ver). Mais
 // recente primeiro, já que é uma lista de acompanhamento pessoal, não uma
 // fila de ação como as listas de pendentes.
-export async function listarMinhasSolicitacoes(solicitanteId: string) {
+export type FiltrosMinhasSolicitacoes = {
+  status?: StatusSolicitacao;
+  de?: Date;
+  ate?: Date;
+  // Trecho da descrição, sem diferenciar maiúsculas de minúsculas.
+  busca?: string;
+};
+
+export async function listarMinhasSolicitacoes(
+  solicitanteId: string,
+  filtros: FiltrosMinhasSolicitacoes = {}
+) {
+  const busca = filtros.busca?.trim();
   return getDb().solicitacao.findMany({
-    where: { solicitanteId },
+    where: {
+      solicitanteId,
+      status: filtros.status,
+      criadoEm: { gte: filtros.de, lte: filtros.ate },
+      descricao: busca ? { contains: busca, mode: "insensitive" } : undefined,
+    },
     include: { departamento: true },
     orderBy: { criadoEm: "desc" },
   });
