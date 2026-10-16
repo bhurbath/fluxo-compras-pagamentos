@@ -3,6 +3,7 @@ import { StatusSolicitacao } from "@prisma/client";
 import {
   calcularDuracoesPorCategoria,
   calcularFilaParada,
+  construirRelatorioMensal,
   construirRelatorioSla,
   donoAtual,
   type EventoHistoricoSla,
@@ -156,6 +157,148 @@ describe("construirRelatorioSla", () => {
     const s = solicitacaoSla("Padrão", [evento("enviado", 0), evento("aprovado", 1)]);
     const relatorio = construirRelatorioSla([s]);
     expect(relatorio.financeiro.contagem).toBe(0);
+  });
+});
+
+describe("construirRelatorioMensal", () => {
+  const dia = (iso: string) => new Date(`${iso}T12:00:00.000Z`);
+  const ev = (nome: string, iso: string, ator?: { id: string; nome: string }): EventoHistoricoSla => ({
+    evento: nome,
+    criadoEm: dia(iso),
+    ator,
+  });
+  const ana = { id: "u-ana", nome: "Ana" };
+  const beto = { id: "u-beto", nome: "Beto" };
+
+  it("calcula da criação ao pago por tipo de compra, por mês do pagamento e acumulado", () => {
+    const solicitacoes = [
+      {
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [ev("enviado_para_pagamento", "2026-01-02"), ev("pago", "2026-01-03")], // 2 dias
+      },
+      {
+        criadoEm: dia("2026-01-20"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [ev("enviado_para_pagamento", "2026-01-25"), ev("pago", "2026-02-09")], // 20 dias, em fev
+      },
+      {
+        criadoEm: dia("2026-02-01"),
+        tipoCompra: { nome: "RDV" },
+        historico: [ev("enviado_para_pagamento", "2026-02-01"), ev("pago", "2026-02-02")], // 1 dia
+      },
+    ];
+
+    const { solicitacaoAPagoPorTipo: tabela } = construirRelatorioMensal(solicitacoes);
+
+    expect(tabela.meses).toEqual(["2026-01", "2026-02"]);
+    expect(tabela.linhas.map((l) => l.rotulo)).toEqual(["Todos os tipos", "Padrão", "RDV"]);
+    const padrao = tabela.linhas.find((l) => l.rotulo === "Padrão")!;
+    expect(padrao.porMes["2026-01"].mediaHoras).toBeCloseTo(2 * 24);
+    expect(padrao.porMes["2026-02"].mediaHoras).toBeCloseTo(20 * 24);
+    expect(padrao.acumulado.contagem).toBe(2);
+    expect(padrao.acumulado.mediaHoras).toBeCloseTo(11 * 24);
+    const rdv = tabela.linhas.find((l) => l.rotulo === "RDV")!;
+    expect(rdv.porMes["2026-01"].contagem).toBe(0);
+    const todos = tabela.linhas[0];
+    expect(todos.acumulado.contagem).toBe(3);
+    expect(todos.porMes["2026-02"].contagem).toBe(2);
+  });
+
+  it("ignora solicitações que ainda não foram pagas na tabela até o pagamento", () => {
+    const { solicitacaoAPagoPorTipo: tabela } = construirRelatorioMensal([
+      {
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [ev("enviado", "2026-01-01"), ev("aprovado", "2026-01-02", ana)],
+      },
+    ]);
+
+    expect(tabela.linhas).toEqual([]);
+  });
+
+  it("mede o tempo de aprovação por quem decidiu, nos dois níveis, pelo mês da decisão", () => {
+    const { aprovacaoPorGestor: tabela } = construirRelatorioMensal([
+      {
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [
+          ev("rascunho_criado", "2026-01-01"),
+          ev("enviado", "2026-01-02"),
+          ev("aguardando_nivel2", "2026-01-03", ana), // Ana (nível 1) decidiu em 1 dia
+          ev("aprovado", "2026-02-02", beto), // Beto (nível 2) decidiu em 30 dias, em fev
+        ],
+      },
+      {
+        criadoEm: dia("2026-01-05"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [
+          ev("enviado", "2026-01-06"),
+          ev("rejeitado", "2026-01-08", ana), // rejeitar também é uma decisão: 2 dias
+        ],
+      },
+    ]);
+
+    const linhaAna = tabela.linhas.find((l) => l.chave === "u-ana")!;
+    const linhaBeto = tabela.linhas.find((l) => l.chave === "u-beto")!;
+    expect(linhaAna.rotulo).toBe("Ana");
+    expect(linhaAna.acumulado.contagem).toBe(2);
+    expect(linhaAna.acumulado.mediaHoras).toBeCloseTo(1.5 * 24);
+    expect(linhaAna.porMes["2026-02"].contagem).toBe(0);
+    expect(linhaBeto.porMes["2026-02"].mediaHoras).toBeCloseTo(30 * 24);
+    expect(tabela.linhas[0].rotulo).toBe("Todos os gestores");
+    expect(tabela.linhas[0].acumulado.contagem).toBe(3);
+  });
+
+  it("não conta como aprovação de gestor um envio que pula a aprovação automaticamente", () => {
+    const { aprovacaoPorGestor: tabela } = construirRelatorioMensal([
+      {
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "RDV" },
+        historico: [ev("rascunho_criado", "2026-01-01", ana), ev("aprovado", "2026-01-01", ana)],
+      },
+    ]);
+
+    expect(tabela.linhas).toEqual([]);
+  });
+
+  it("mede o registro do Financeiro até aguardando comprovante ou pago, sem contar recusas", () => {
+    const { registroFinanceiro: tabela } = construirRelatorioMensal([
+      {
+        // Ainda não paga: já registrou e está aguardando comprovante.
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [
+          ev("enviado_para_pagamento", "2026-01-10"),
+          ev("aguardando_comprovante", "2026-01-12", ana), // 2 dias
+        ],
+      },
+      {
+        // Tipo sem comprovante: registrar já leva a Pago.
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Despesa de Pessoal" },
+        historico: [ev("enviado_para_pagamento", "2026-02-01"), ev("pago", "2026-02-05", ana)], // 4 dias
+      },
+      {
+        // Recusa, depois registro: só o registro (1 dia) entra.
+        criadoEm: dia("2026-01-01"),
+        tipoCompra: { nome: "Padrão" },
+        historico: [
+          ev("enviado_para_pagamento", "2026-02-10"),
+          ev("pagamento_recusado", "2026-02-18", ana),
+          ev("reenviado_para_pagamento", "2026-02-19"),
+          ev("aguardando_comprovante", "2026-02-20", ana),
+        ],
+      },
+    ]);
+
+    expect(tabela.linhas).toHaveLength(1);
+    const linha = tabela.linhas[0];
+    expect(linha.rotulo).toBe("Registro Financeiro");
+    expect(linha.acumulado.contagem).toBe(3);
+    expect(linha.porMes["2026-01"].mediaHoras).toBeCloseTo(2 * 24);
+    expect(linha.porMes["2026-02"].contagem).toBe(2);
+    expect(linha.porMes["2026-02"].mediaHoras).toBeCloseTo(2.5 * 24);
   });
 });
 

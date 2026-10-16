@@ -5,8 +5,18 @@ import {
   DONO_LEGIVEL,
   type EstatisticasSla,
   type ItemFilaParada,
+  type RelatorioMensal,
   type RelatorioSla,
+  type TabelaMensal,
 } from "@/lib/sla";
+
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+// "2026-09" → "set/2026"
+function rotuloMes(mes: string): string {
+  const [ano, numero] = mes.split("-");
+  return `${MESES_ABREV[Number(numero) - 1] ?? numero}/${ano}`;
+}
 
 // "3d 4h" acima de 24h (mais fácil de ler um número de dias do que "76h"),
 // "12,3h" abaixo disso. Sempre uma casa decimal na parte de horas — o
@@ -58,17 +68,92 @@ function CardEstatistica({ titulo, stats, nota }: { titulo: string; stats: Estat
   );
 }
 
+// Meses nas colunas, uma linha por tipo/gestor, e a coluna "Acumulado" (todos
+// os meses juntos) no fim. Cada célula é a média do mês e, ao lado, o número
+// de amostras que ela resume.
+function TabelaMensalAcumulada({
+  titulo,
+  descricao,
+  rotuloPrimeiraColuna,
+  tabela,
+}: {
+  titulo: string;
+  descricao: string;
+  rotuloPrimeiraColuna: string;
+  tabela: TabelaMensal;
+}) {
+  const celula = (stats: EstatisticasSla) =>
+    stats.contagem === 0 ? (
+      "—"
+    ) : (
+      <>
+        {formatarHoras(stats.mediaHoras)} <span className="muted-xs">({stats.contagem})</span>
+      </>
+    );
+
+  return (
+    <div className="flex flex-col gap-2" style={{ marginTop: "1.25rem" }}>
+      <h3 className="section-title">{titulo}</h3>
+      <p className="muted">{descricao}</p>
+      {tabela.linhas.length === 0 ? (
+        <p className="muted">Sem dados ainda.</p>
+      ) : (
+        <div className="panel" style={{ padding: "0.5rem 1.25rem", overflowX: "auto" }}>
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th>{rotuloPrimeiraColuna}</th>
+                {tabela.meses.map((mes) => (
+                  <th key={mes} style={{ whiteSpace: "nowrap" }}>
+                    {rotuloMes(mes)}
+                  </th>
+                ))}
+                <th>Acumulado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tabela.linhas.map((linha) => (
+                <tr key={linha.chave}>
+                  <td style={{ fontWeight: linha.chave === "__total__" ? 600 : undefined }}>
+                    {linha.rotulo}
+                  </td>
+                  {tabela.meses.map((mes) => (
+                    <td key={mes} style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                      {celula(linha.porMes[mes])}
+                    </td>
+                  ))}
+                  <td
+                    style={{
+                      fontVariantNumeric: "tabular-nums",
+                      whiteSpace: "nowrap",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {celula(linha.acumulado)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PainelSla({
   params,
   dataInvalida,
   relatorio,
   tendenciaMensal,
+  mensal,
   filaParada,
 }: {
   params: { de?: string; ate?: string };
   dataInvalida: boolean;
   relatorio: RelatorioSla;
   tendenciaMensal: { mes: string; financeiroMediaHoras: number; contagem: number }[];
+  mensal: RelatorioMensal;
   filaParada: ItemFilaParada[];
 }) {
   const categoriasComDados = (Object.keys(CATEGORIA_LEGIVEL) as (keyof typeof CATEGORIA_LEGIVEL)[])
@@ -118,6 +203,33 @@ export function PainelSla({
           nota="Tempo parado esperando o solicitante/comprador corrigir e reenviar — não é SLA de ninguém, mas mostra quanto tempo o processo perde nisso."
         />
       </div>
+
+      <h2 className="section-title" style={{ marginTop: "1.5rem" }}>
+        Mensal e acumulado
+      </h2>
+      <p className="muted">
+        Média por mês, com o número de amostras entre parênteses; &ldquo;Acumulado&rdquo; junta
+        todos os meses. Esta seção sempre mostra o histórico completo, independente do filtro
+        de período acima.
+      </p>
+      <TabelaMensalAcumulada
+        titulo="Da solicitação até o pagamento, por tipo de compra"
+        descricao="Da data de criação da solicitação até o status Pago. O mês é o do pagamento."
+        rotuloPrimeiraColuna="Tipo de compra"
+        tabela={mensal.solicitacaoAPagoPorTipo}
+      />
+      <TabelaMensalAcumulada
+        titulo="Tempo de aprovação por gestor"
+        descricao="Do envio (ou da aprovação de nível 1, no caso do diretor) até a decisão do gestor, aprovando ou rejeitando. O mês é o da decisão."
+        rotuloPrimeiraColuna="Gestor"
+        tabela={mensal.aprovacaoPorGestor}
+      />
+      <TabelaMensalAcumulada
+        titulo="SLA Registro Financeiro"
+        descricao="De Aguardando pagamento até Aguardando comprovante (nos tipos que não exigem comprovante, até Pago). Recusas de pagamento não entram. O mês é o do registro."
+        rotuloPrimeiraColuna="Etapa"
+        tabela={mensal.registroFinanceiro}
+      />
 
       <h2 className="section-title" style={{ marginTop: "1.5rem" }}>
         Detalhe por etapa

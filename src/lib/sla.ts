@@ -76,7 +76,43 @@ const CATEGORIAS_COMPRADOR: CategoriaSla[] = [
 ];
 const CATEGORIAS_CORRECAO: CategoriaSla[] = ["correcaoRejeicao", "correcaoPagamentoRecusado"];
 
-export type EventoHistoricoSla = { evento: string; criadoEm: Date };
+export type AtorSla = { id: string; nome: string };
+
+// ator: quem gravou o evento — só é usado para saber quem decidiu um
+// intervalo (ver IntervaloSla.ator); ausente nos chamadores que não precisam.
+export type EventoHistoricoSla = { evento: string; criadoEm: Date; ator?: AtorSla | null };
+
+// Um trecho de espera: começa num evento de EVENTO_PARA_CATEGORIA e termina
+// no evento seguinte do histórico. ator/eventoFim descrevem esse evento
+// final — quem agiu (ex.: o gestor que aprovou) e o que aconteceu (ex.:
+// aguardando_comprovante vs. pagamento_recusado) — e fim a data em que isso
+// ocorreu, usada para atribuir o trecho a um mês.
+export type IntervaloSla = {
+  categoria: CategoriaSla;
+  fim: Date;
+  ms: number;
+  eventoFim: string;
+  ator: AtorSla | null;
+};
+
+export function extrairIntervalos(historico: EventoHistoricoSla[]): IntervaloSla[] {
+  const intervalos: IntervaloSla[] = [];
+  for (let i = 0; i < historico.length - 1; i++) {
+    const categoria = EVENTO_PARA_CATEGORIA[historico[i].evento];
+    if (!categoria) continue;
+    const proximo = historico[i + 1];
+    const ms = proximo.criadoEm.getTime() - historico[i].criadoEm.getTime();
+    if (ms < 0) continue; // defensivo — nunca deveria acontecer com criadoEm ascendente
+    intervalos.push({
+      categoria,
+      fim: proximo.criadoEm,
+      ms,
+      eventoFim: proximo.evento,
+      ator: proximo.ator ?? null,
+    });
+  }
+  return intervalos;
+}
 
 // Soma, por categoria, quanto tempo (ms) cada trecho do histórico desta
 // solicitação específica ficou esperando uma ação — uma mesma categoria
@@ -89,11 +125,7 @@ export function calcularDuracoesPorCategoria(
   historico: EventoHistoricoSla[]
 ): Partial<Record<CategoriaSla, number>> {
   const duracoes: Partial<Record<CategoriaSla, number>> = {};
-  for (let i = 0; i < historico.length - 1; i++) {
-    const categoria = EVENTO_PARA_CATEGORIA[historico[i].evento];
-    if (!categoria) continue;
-    const ms = historico[i + 1].criadoEm.getTime() - historico[i].criadoEm.getTime();
-    if (ms < 0) continue; // defensivo — nunca deveria acontecer com criadoEm ascendente
+  for (const { categoria, ms } of extrairIntervalos(historico)) {
     duracoes[categoria] = (duracoes[categoria] ?? 0) + ms;
   }
   return duracoes;
@@ -261,6 +293,143 @@ export function construirRelatorioSla(
     porTipoCompra,
     porMes,
   };
+}
+
+// --- Mensal e acumulado --------------------------------------------------
+
+// Uma amostra de SLA: `chave` agrupa as linhas da tabela (ex.: o id do
+// gestor — dois gestores com o mesmo nome continuam separados), `rotulo` é
+// o que aparece, `mes` ("yyyy-mm", mesmo critério UTC de RelatorioSla.porMes)
+// é a coluna.
+type Amostra = { chave: string; rotulo: string; mes: string; ms: number };
+
+export type LinhaMensal = {
+  chave: string;
+  rotulo: string;
+  porMes: Record<string, EstatisticasSla>;
+  // Todos os meses juntos — não uma média das médias mensais.
+  acumulado: EstatisticasSla;
+};
+
+export type TabelaMensal = { meses: string[]; linhas: LinhaMensal[] };
+
+const CHAVE_TOTAL = "__total__";
+
+// rotuloTotal: acrescenta, no topo, uma linha que soma todas as amostras
+// (ex.: "Todos os tipos"). As demais ficam da mais lenta para a mais rápida
+// no acumulado.
+function montarTabelaMensal(amostras: Amostra[], rotuloTotal?: string): TabelaMensal {
+  type Grupo = { rotulo: string; todas: number[]; porMes: Map<string, number[]> };
+  const grupos = new Map<string, Grupo>();
+  const adicionar = (chave: string, rotulo: string, amostra: Amostra) => {
+    const grupo: Grupo = grupos.get(chave) ?? { rotulo, todas: [], porMes: new Map() };
+    grupo.todas.push(amostra.ms);
+    const doMes = grupo.porMes.get(amostra.mes) ?? [];
+    doMes.push(amostra.ms);
+    grupo.porMes.set(amostra.mes, doMes);
+    grupos.set(chave, grupo);
+  };
+  for (const amostra of amostras) {
+    adicionar(amostra.chave, amostra.rotulo, amostra);
+    if (rotuloTotal) adicionar(CHAVE_TOTAL, rotuloTotal, amostra);
+  }
+
+  const meses = Array.from(new Set(amostras.map((a) => a.mes))).sort();
+  const linhas = Array.from(grupos.entries()).map(([chave, grupo]): LinhaMensal => ({
+    chave,
+    rotulo: grupo.rotulo,
+    porMes: Object.fromEntries(
+      meses.map((mes) => [mes, estatisticas(grupo.porMes.get(mes) ?? [])])
+    ),
+    acumulado: estatisticas(grupo.todas),
+  }));
+  linhas.sort((a, b) => {
+    if (a.chave === CHAVE_TOTAL) return -1;
+    if (b.chave === CHAVE_TOTAL) return 1;
+    return b.acumulado.mediaHoras - a.acumulado.mediaHoras;
+  });
+  return { meses, linhas };
+}
+
+export type SolicitacaoParaSlaMensal = {
+  criadoEm: Date;
+  tipoCompra: { nome: string };
+  historico: EventoHistoricoSla[];
+};
+
+export type RelatorioMensal = {
+  // Da criação da solicitação até o evento "pago" (status PAGO), por tipo de
+  // compra; o mês é o do pagamento.
+  solicitacaoAPagoPorTipo: TabelaMensal;
+  // Do envio (ou da aprovação de nível 1, para o diretor) até a decisão —
+  // aprovar ou rejeitar —, por quem decidiu; o mês é o da decisão.
+  aprovacaoPorGestor: TabelaMensal;
+  // De "aguardando pagamento" até "aguardando comprovante" (ou até "pago",
+  // nos tipos que não exigem comprovante); o mês é o do registro. Recusas
+  // de pagamento ficam de fora — não são um registro.
+  registroFinanceiro: TabelaMensal;
+};
+
+const EVENTOS_REGISTRO_PAGAMENTO = ["aguardando_comprovante", "pago"];
+
+// Diferente de construirRelatorioSla, não recebe só solicitações já pagas: o
+// tempo de aprovação de um gestor e o registro do Financeiro existem mesmo
+// quando a solicitação ainda não chegou a PAGO (ou nunca chega — rejeitada,
+// cancelada), então quem chama traz todas as enviadas.
+export function construirRelatorioMensal(
+  solicitacoes: SolicitacaoParaSlaMensal[]
+): RelatorioMensal {
+  const aPago: Amostra[] = [];
+  const aprovacao: Amostra[] = [];
+  const registro: Amostra[] = [];
+
+  for (const solicitacao of solicitacoes) {
+    const pago = solicitacao.historico.find((h) => h.evento === "pago");
+    if (pago) {
+      const ms = pago.criadoEm.getTime() - solicitacao.criadoEm.getTime();
+      if (ms >= 0) {
+        aPago.push({
+          chave: solicitacao.tipoCompra.nome,
+          rotulo: solicitacao.tipoCompra.nome,
+          mes: chaveMes(pago.criadoEm),
+          ms,
+        });
+      }
+    }
+
+    for (const intervalo of extrairIntervalos(solicitacao.historico)) {
+      const mes = chaveMes(intervalo.fim);
+      if (intervalo.categoria === "aprovacaoGestor" && intervalo.ator) {
+        aprovacao.push({
+          chave: intervalo.ator.id,
+          rotulo: intervalo.ator.nome,
+          mes,
+          ms: intervalo.ms,
+        });
+      }
+      if (
+        intervalo.categoria === "financeiroRegistrarPagamento" &&
+        EVENTOS_REGISTRO_PAGAMENTO.includes(intervalo.eventoFim)
+      ) {
+        registro.push({
+          chave: "registro",
+          rotulo: "Registro Financeiro",
+          mes,
+          ms: intervalo.ms,
+        });
+      }
+    }
+  }
+
+  return {
+    solicitacaoAPagoPorTipo: montarTabelaMensal(aPago, "Todos os tipos"),
+    aprovacaoPorGestor: montarTabelaMensal(aprovacao, "Todos os gestores"),
+    registroFinanceiro: montarTabelaMensal(registro),
+  };
+}
+
+function chaveMes(data: Date): string {
+  return data.toISOString().slice(0, 7); // "yyyy-mm"
 }
 
 // --- Fila parada agora ---------------------------------------------------

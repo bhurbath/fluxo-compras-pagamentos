@@ -4,7 +4,7 @@ import { AcessoRestrito } from "../../admin/_components/acesso-restrito";
 import { getFinanceiroUsuario } from "@/lib/admin/guard";
 import { getDb } from "@/lib/db";
 import { parseDataFiltro } from "@/lib/format";
-import { construirRelatorioSla, calcularFilaParada } from "@/lib/sla";
+import { construirRelatorioMensal, construirRelatorioSla, calcularFilaParada } from "@/lib/sla";
 import { PainelSla } from "./_components/painel-sla";
 
 // Duas consultas separadas de listarSolicitacoesParaExportar (que filtra
@@ -28,26 +28,19 @@ export default async function RelatorioSlaPage({
   const ate = parseDataFiltro(params.ate ?? null, "fim");
   const dataInvalida = de === null || ate === null;
 
-  const [todasPagas, emAberto] = await Promise.all([
-    getDb().solicitacao.findMany({
-      where: { status: StatusSolicitacao.PAGO },
-      include: { tipoCompra: true, historico: { orderBy: { criadoEm: "asc" } } },
-    }),
-    getDb().solicitacao.findMany({
-      where: {
-        status: {
-          notIn: [
-            StatusSolicitacao.PAGO,
-            StatusSolicitacao.RASCUNHO,
-            StatusSolicitacao.REJEITADO,
-            StatusSolicitacao.CANCELADO,
-          ],
-        },
-      },
-      include: { historico: { orderBy: { criadoEm: "asc" } } },
-      orderBy: { criadoEm: "asc" },
-    }),
-  ]);
+  // Uma consulta só: o SLA mensal por gestor e o registro do Financeiro
+  // existem mesmo em solicitações que ainda não foram pagas (ou que nunca
+  // serão — rejeitadas, canceladas), então não dá para partir só das pagas.
+  // calcularFilaParada já ignora, pelo status, o que não está em aberto.
+  const enviadas = await getDb().solicitacao.findMany({
+    where: { status: { not: StatusSolicitacao.RASCUNHO } },
+    include: {
+      tipoCompra: true,
+      historico: { include: { ator: true }, orderBy: { criadoEm: "asc" } },
+    },
+    orderBy: { criadoEm: "asc" },
+  });
+  const todasPagas = enviadas.filter((s) => s.status === StatusSolicitacao.PAGO);
 
   const pagasNoPeriodo = dataInvalida
     ? []
@@ -61,7 +54,8 @@ export default async function RelatorioSlaPage({
 
   const relatorioPeriodo = construirRelatorioSla(pagasNoPeriodo);
   const relatorioCompleto = construirRelatorioSla(todasPagas);
-  const filaParada = calcularFilaParada(emAberto);
+  const filaParada = calcularFilaParada(enviadas);
+  const relatorioMensal = construirRelatorioMensal(enviadas);
 
   return (
     <main className="shell">
@@ -77,6 +71,7 @@ export default async function RelatorioSlaPage({
           dataInvalida={dataInvalida}
           relatorio={relatorioPeriodo}
           tendenciaMensal={relatorioCompleto.porMes}
+          mensal={relatorioMensal}
           filaParada={filaParada}
         />
 
