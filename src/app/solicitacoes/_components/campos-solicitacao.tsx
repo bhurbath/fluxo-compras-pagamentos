@@ -287,8 +287,8 @@ export function CamposSolicitacao({
         />
         {defaultValues?.temAnexo && (
           <span className="muted-xs">
-            Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
-            substituí-los.
+            Já existe(m) anexo(s) nesta solicitação — os novos arquivos são acrescentados
+            a eles.
           </span>
         )}
       </label>
@@ -358,8 +358,8 @@ export function CamposSolicitacao({
         />
         {defaultValues?.temAnexo && (
           <span className="muted-xs">
-            Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
-            substituí-los.
+            Já existe(m) anexo(s) nesta solicitação — os novos arquivos são acrescentados
+            a eles.
           </span>
         )}
       </label>
@@ -374,12 +374,17 @@ export function CamposSolicitacao({
         />
       </label>
       <label className="field campo-anexo-fundo-fixo">
-        Anexo (opcional — PDF, JPG ou PNG)
-        <input type="file" name="notaFiscal" accept=".pdf,.jpg,.jpeg,.png" className="input-field" />
+        Anexo(s) (opcional — PDF, JPG ou PNG — pode selecionar mais de um arquivo)
+        <input
+          type="file"
+          name="notaFiscal"
+          accept=".pdf,.jpg,.jpeg,.png"
+          multiple
+          className="input-field"
+        />
         {defaultValues?.temAnexo && (
           <span className="muted-xs">
-            Já existe um anexo nesta solicitação — envie um novo arquivo só se quiser
-            substituí-lo.
+            Já existe(m) anexo(s) nesta solicitação — os novos arquivos são acrescentados a eles.
           </span>
         )}
       </label>
@@ -420,16 +425,17 @@ export function CamposSolicitacao({
         />
       </label>
       <label className="field campo-cotacao-adiantamento">
-        Cotação/orçamento (opcional — PDF, JPG ou PNG)
+        Cotação/orçamento (opcional — PDF, JPG ou PNG — pode selecionar mais de um arquivo)
         <input
           type="file"
           name="cotacaoAdiantamento"
           accept=".pdf,.jpg,.jpeg,.png"
+          multiple
           className="input-field"
         />
         {defaultValues?.temCotacao && (
           <span className="muted-xs">
-            Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
+            Já existe(m) cotação(ões) anexada(s) — os novos arquivos são acrescentados a elas.
           </span>
         )}
       </label>
@@ -519,16 +525,17 @@ export function CamposSolicitacao({
           />
         </label>
         <label className="field">
-          Cotação/orçamento (opcional — PDF, JPG ou PNG)
+          Cotação/orçamento (opcional — PDF, JPG ou PNG — pode selecionar mais de um arquivo)
           <input
             type="file"
             name="cotacao"
             accept=".pdf,.jpg,.jpeg,.png"
+            multiple
             className="input-field"
           />
           {defaultValues?.temCotacao && (
             <span className="muted-xs">
-              Já existe uma cotação anexada — envie um novo arquivo só se quiser substituí-la.
+              Já existe(m) cotação(ões) anexada(s) — os novos arquivos são acrescentados a elas.
             </span>
           )}
         </label>
@@ -557,8 +564,8 @@ export function CamposSolicitacao({
             />
             {defaultValues?.temAnexo && (
               <span className="muted-xs">
-                Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
-                substituí-los.
+                Já existe(m) anexo(s) nesta solicitação — os novos arquivos são acrescentados
+                a eles.
               </span>
             )}
           </label>
@@ -651,12 +658,24 @@ export function CamposSolicitacao({
           />
           {defaultValues?.temAnexo && (
             <span className="muted-xs">
-              Já existe(m) anexo(s) nesta solicitação — envie novos arquivos só se quiser
-              substituí-los.
+              Já existe(m) anexo(s) nesta solicitação — os novos arquivos são acrescentados
+              a eles.
             </span>
           )}
         </label>
       </div>
+
+      {(defaultValues?.temAnexo || defaultValues?.temCotacao) && (
+        <label className="field-inline">
+          <input
+            name="substituirAnexos"
+            type="checkbox"
+            defaultChecked={marcado("substituirAnexos", false)}
+          />
+          Substituir os anexos já enviados (desmarcado, os novos arquivos são acrescentados
+          aos que já existem)
+        </label>
+      )}
     </>
   );
 }

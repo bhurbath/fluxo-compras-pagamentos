@@ -5,6 +5,7 @@ import { comUsuarioAutenticado } from "@/lib/require-usuario";
 import { preservarFormulario, redirectComErro } from "@/lib/redirect-with-error";
 import { toFriendlyError } from "@/lib/prisma-errors";
 import { exigirTodos, lerCampos } from "@/lib/form-helpers";
+import { combinarAnexos } from "@/lib/anexos";
 import { uploadAnexo } from "@/lib/storage";
 import { obterTipoCompra } from "@/lib/tipos-compra";
 import {
@@ -43,12 +44,23 @@ async function lerArquivos(
   );
 }
 
-// Anexos já existentes (edição de uma solicitação sem compra rejeitada, sem
-// reenvio de novos arquivos) — ver editarEReenviarAction. Sem isso o
-// solicitante seria obrigado a reanexar a mesma documentação a cada
-// correção, já que um <input type="file"> nunca vem pré-preenchido. Quando
-// vem pelo menos um arquivo novo, ele substitui o conjunto anterior inteiro
-// (não acumula) — mesmo padrão que um <input multiple> já sugere ao usuário.
+// Anexos de um campo, levando em conta o que a solicitação já tinha (ver
+// combinarAnexos em src/lib/anexos.ts); a caixa "Substituir os anexos já
+// enviados" do formulário chega aqui como substituirAnexos.
+async function lerAnexos(
+  formData: FormData,
+  name: string,
+  solicitacaoId: string,
+  atuais: string[],
+  extensoesPermitidas?: string[]
+): Promise<string[]> {
+  const novos = await lerArquivos(formData, name, solicitacaoId, extensoesPermitidas);
+  return combinarAnexos(atuais, novos, formData.get("substituirAnexos") === "on");
+}
+
+// Documentação de uma solicitação sem compra — na edição (ver
+// editarEReenviarAction), mantém ou acrescenta aos anexos já existentes em
+// vez de exigir reanexar tudo (ver lerAnexos).
 async function lerCamposSemCompra(
   formData: FormData,
   solicitacaoId: string,
@@ -61,8 +73,7 @@ async function lerCamposSemCompra(
       "para uma solicitação sem compra."
   );
 
-  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
-  const notaFiscalUrls = enviados.length > 0 ? enviados : notaFiscalUrlsAtuais;
+  const notaFiscalUrls = await lerAnexos(formData, "notaFiscal", solicitacaoId, notaFiscalUrlsAtuais);
   if (notaFiscalUrls.length === 0) {
     throw new Error("A documentação (nota fiscal/guia) é obrigatória para uma solicitação sem compra.");
   }
@@ -75,20 +86,15 @@ async function lerCamposSemCompra(
   };
 }
 
-// Cotação/orçamento — opcional e independente de semCompra (apoia a decisão
-// do aprovador, não é a documentação fiscal da compra em si). Mesmo padrão
-// de "mantém o anexo atual se nenhum arquivo novo vier" que lerCamposSemCompra
-// usa para notaFiscal, para não obrigar reanexar a cada edição.
-async function lerCotacaoUrl(
+// Cotações/orçamentos — opcionais e independentes de semCompra (apoiam a
+// decisão do aprovador, não são a documentação fiscal da compra em si).
+// Mesmo comportamento de acrescentar/manter de notaFiscal (ver lerAnexos).
+async function lerCotacoes(
   formData: FormData,
   solicitacaoId: string,
-  cotacaoUrlAtual: string | null
-): Promise<string | null> {
-  const cotacao = formData.get("cotacao");
-  if (cotacao instanceof File && cotacao.size > 0) {
-    return uploadAnexo(cotacao, solicitacaoId);
-  }
-  return cotacaoUrlAtual;
+  cotacaoUrlsAtuais: string[]
+): Promise<string[]> {
+  return lerAnexos(formData, "cotacao", solicitacaoId, cotacaoUrlsAtuais);
 }
 
 // Anexos de despesa de pessoal também aceitam CSV/Excel (ex.: planilha de
@@ -116,10 +122,11 @@ async function lerCamposDespesaPessoal(
     "dataVencimento",
     "dadosPagamentoDespesa",
   ]);
-  const enviados = await lerArquivos(
+  const notaFiscalUrls = await lerAnexos(
     formData,
     "notaFiscal",
     solicitacaoId,
+    notaFiscalUrlsAtuais,
     EXTENSOES_DESPESA_PESSOAL
   );
   return {
@@ -127,7 +134,7 @@ async function lerCamposDespesaPessoal(
     numeroPedido: campos.numeroPedido || null,
     dataVencimento: campos.dataVencimento || null,
     dadosPagamento: campos.dadosPagamentoDespesa || null,
-    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+    notaFiscalUrls,
   };
 }
 
@@ -157,7 +164,7 @@ async function lerCamposRdv(
     "numeroRdv",
     "nomeColaboradorRdv",
   ]);
-  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  const notaFiscalUrls = await lerAnexos(formData, "notaFiscal", solicitacaoId, notaFiscalUrlsAtuais);
   return {
     valorReembolsar: campos.valorReembolsar || null,
     valorCartaoOnfly: campos.valorCartaoOnfly || null,
@@ -165,7 +172,7 @@ async function lerCamposRdv(
     numeroRdv: campos.numeroRdv || null,
     nomeColaboradorRdv: campos.nomeColaboradorRdv || null,
     possuiAdiantamento: formData.get("possuiAdiantamento") === "on",
-    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+    notaFiscalUrls,
   };
 }
 
@@ -194,13 +201,13 @@ async function lerCamposCaixaInterno(
     "centroResultadoIdCaixaInterno",
     "contaContabilIdCaixaInterno",
   ]);
-  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  const notaFiscalUrls = await lerAnexos(formData, "notaFiscal", solicitacaoId, notaFiscalUrlsAtuais);
   return {
     dataDespesa: campos.dataDespesa || null,
     centroCustoId: campos.centroCustoIdCaixaInterno || null,
     centroResultadoId: campos.centroResultadoIdCaixaInterno || null,
     contaContabilId: campos.contaContabilIdCaixaInterno || null,
-    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+    notaFiscalUrls,
   };
 }
 
@@ -217,11 +224,11 @@ async function lerCamposFundoFixo(
   notaFiscalUrlsAtuais: string[]
 ): Promise<Pick<CriarSolicitacaoInput, "dataVencimento" | "dadosPagamento" | "notaFiscalUrls">> {
   const campos = lerCampos(formData, ["dataVencimentoFundoFixo", "pixDeposito"]);
-  const enviados = await lerArquivos(formData, "notaFiscal", solicitacaoId);
+  const notaFiscalUrls = await lerAnexos(formData, "notaFiscal", solicitacaoId, notaFiscalUrlsAtuais);
   return {
     dataVencimento: campos.dataVencimentoFundoFixo || null,
     dadosPagamento: campos.pixDeposito || null,
-    notaFiscalUrls: enviados.length > 0 ? enviados : notaFiscalUrlsAtuais,
+    notaFiscalUrls,
   };
 }
 
@@ -232,16 +239,15 @@ async function lerCamposFundoFixo(
 // escondidos em .despesa-pessoal-fields/.campos-padrao (ambos ficam
 // escondidos inteiros nesse tipo). Cotação também é dedicada (o campo
 // genérico dentro de .campos-padrao fica escondido) e opcional — mesmo
-// padrão de "mantém o anexo atual se nenhum arquivo novo vier" de
-// lerCotacaoUrl, mas lendo de outro name.
+// comportamento de lerCotacoes, mas lendo de outro name.
 async function lerCamposAdiantamentoIndustrial(
   formData: FormData,
   solicitacaoIdParaAnexo: string,
-  cotacaoUrlAtual: string | null
+  cotacaoUrlsAtuais: string[]
 ): Promise<
   Pick<
     CriarSolicitacaoInput,
-    "dataVencimento" | "numeroPedido" | "fornecedorDocumento" | "cotacaoUrl"
+    "dataVencimento" | "numeroPedido" | "fornecedorDocumento" | "cotacaoUrls"
   >
 > {
   const campos = lerCampos(formData, [
@@ -249,16 +255,17 @@ async function lerCamposAdiantamentoIndustrial(
     "numeroPedidoAdiantamento",
     "fornecedorDocumentoAdiantamento",
   ]);
-  const cotacao = formData.get("cotacaoAdiantamento");
-  const cotacaoUrl =
-    cotacao instanceof File && cotacao.size > 0
-      ? await uploadAnexo(cotacao, solicitacaoIdParaAnexo)
-      : cotacaoUrlAtual;
+  const cotacaoUrls = await lerAnexos(
+    formData,
+    "cotacaoAdiantamento",
+    solicitacaoIdParaAnexo,
+    cotacaoUrlsAtuais
+  );
   return {
     dataVencimento: campos.dataVencimentoAdiantamento || null,
     numeroPedido: campos.numeroPedidoAdiantamento || null,
     fornecedorDocumento: campos.fornecedorDocumentoAdiantamento || null,
-    cotacaoUrl,
+    cotacaoUrls,
   };
 }
 
@@ -277,7 +284,7 @@ async function parseSolicitacaoForm(
   // ainda não tem id nesse ponto, daí o placeholder.
   solicitacaoIdParaAnexo: string,
   notaFiscalUrlsAtuais: string[] = [],
-  cotacaoUrlAtual: string | null = null
+  cotacaoUrlsAtuais: string[] = []
 ): Promise<CriarSolicitacaoInput> {
   if (!usuario.departamentoId) {
     throw new Error(
@@ -307,7 +314,7 @@ async function parseSolicitacaoForm(
   // src/lib/workflow.ts).
   const opcionaisTopo = lerCampos(formData, ["fornecedor", "empresaId"]);
   const opcionais = lerCampos(formData, ["linkCompra", "informacoesComplementares"]);
-  const cotacaoUrl = await lerCotacaoUrl(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual);
+  const cotacaoUrls = await lerCotacoes(formData, solicitacaoIdParaAnexo, cotacaoUrlsAtuais);
 
   const base = {
     solicitanteId: usuario.id,
@@ -347,7 +354,7 @@ async function parseSolicitacaoForm(
   if (tipoCompra?.adiantamentoIndustrial) {
     return {
       ...base,
-      ...(await lerCamposAdiantamentoIndustrial(formData, solicitacaoIdParaAnexo, cotacaoUrlAtual)),
+      ...(await lerCamposAdiantamentoIndustrial(formData, solicitacaoIdParaAnexo, cotacaoUrlsAtuais)),
     };
   }
 
@@ -377,7 +384,7 @@ async function parseSolicitacaoForm(
     centroResultadoId: padrao.centroResultadoId,
     contaContabilId: padrao.contaContabilId,
     linkCompra: opcionais.linkCompra || null,
-    cotacaoUrl,
+    cotacaoUrls,
     dataVencimento: padrao.dataVencimentoCompradorSolicitante || null,
     semCompra,
     ...(semCompra
@@ -436,7 +443,7 @@ export const editarEReenviarAction = comUsuarioAutenticado(
         formData,
         id,
         atual?.notaFiscalUrls ?? [],
-        atual?.cotacaoUrl ?? null
+        atual?.cotacaoUrls ?? []
       );
       await editarSolicitacao(id, usuario.id, input);
       await reenviarSolicitacao(id);
@@ -468,7 +475,7 @@ export const editarRascunhoAction = comUsuarioAutenticado(
         formData,
         id,
         atual?.notaFiscalUrls ?? [],
-        atual?.cotacaoUrl ?? null
+        atual?.cotacaoUrls ?? []
       );
       await editarRascunho(id, usuario.id, input);
     } catch (error) {
@@ -489,7 +496,7 @@ export const editarRascunhoEEnviarAction = comUsuarioAutenticado(
         formData,
         id,
         atual?.notaFiscalUrls ?? [],
-        atual?.cotacaoUrl ?? null
+        atual?.cotacaoUrls ?? []
       );
       await editarRascunho(id, usuario.id, input);
       await enviarSolicitacao(id);

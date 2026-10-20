@@ -52,12 +52,12 @@ export type CriarSolicitacaoInput = {
   empresaId?: string | null;
   linkCompra?: string | null;
   informacoesComplementares?: string | null;
-  // Cotação/orçamento opcional, para apoiar a decisão do aprovador — ver
-  // comentário no schema (model Solicitacao). Também disponível (opcional)
+  // Cotações/orçamentos opcionais, para apoiar a decisão do aprovador — ver
+  // comentário no schema (model Solicitacao). Também disponíveis (opcionais)
   // em Adiantamento para Compras Industriais (ver
   // TipoCompra.adiantamentoIndustrial), mesmo esse pulando a etapa de
-  // compra — os demais tipos que pulam a etapa de compra não o coletam.
-  cotacaoUrl?: string | null;
+  // compra — os demais tipos que pulam a etapa de compra não os coletam.
+  cotacaoUrls?: string[];
   // Encargos, taxas e outras despesas sem etapa de compra (ver
   // enviarDiretoParaPagamento, abaixo) — quando true, a documentação e os
   // dados de pagamento já chegam anexados na criação em vez de serem
@@ -501,10 +501,13 @@ function mapCamposSolicitacao(input: CriarSolicitacaoInput, tipoCompra: TipoComp
     empresaId,
     linkCompra: pulaCompra ? null : input.linkCompra?.trim() || null,
     informacoesComplementares: input.informacoesComplementares?.trim() || null,
-    // Adiantamento para Compras Industriais também coleta cotação, apesar
+    // Adiantamento para Compras Industriais também coleta cotações, apesar
     // de pular a etapa de compra — os demais tipos que pulam essa etapa
-    // não a coletam.
-    cotacaoUrl: pulaCompra && !adiantamentoIndustrial ? null : input.cotacaoUrl?.trim() || null,
+    // não as coletam.
+    cotacaoUrls:
+      pulaCompra && !adiantamentoIndustrial
+        ? []
+        : (input.cotacaoUrls ?? []).map((url) => url.trim()).filter(Boolean),
     semCompra,
     notaFiscalUrls: semCompra ? (input.notaFiscalUrls ?? []) : [],
     metodoPagamento: !pulaCompra && semCompra ? input.metodoPagamento ?? null : null,

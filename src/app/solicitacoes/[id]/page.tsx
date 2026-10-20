@@ -197,12 +197,12 @@ export default async function SolicitacaoDetalhePage({
   const [
     notaFiscalUrlsAssinadas,
     comprovantePagamentoUrlsAssinadas,
-    cotacaoUrlAssinada,
+    cotacaoUrlsAssinadas,
     documentacaoBaixaAdiantamentoUrlsAssinadas,
   ] = await Promise.all([
     Promise.all(solicitacao.notaFiscalUrls.map((url) => gerarUrlAssinada(url))),
     Promise.all(solicitacao.comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url))),
-    solicitacao.cotacaoUrl ? gerarUrlAssinada(solicitacao.cotacaoUrl) : null,
+    Promise.all(solicitacao.cotacaoUrls.map((url) => gerarUrlAssinada(url))),
     Promise.all(solicitacao.documentacaoBaixaAdiantamentoUrls.map((url) => gerarUrlAssinada(url))),
   ]);
 
@@ -218,7 +218,7 @@ export default async function SolicitacaoDetalhePage({
             solicitacao={solicitacao}
             notaFiscalUrlsAssinadas={notaFiscalUrlsAssinadas}
             comprovantePagamentoUrlsAssinadas={comprovantePagamentoUrlsAssinadas}
-            cotacaoUrlAssinada={cotacaoUrlAssinada}
+            cotacaoUrlsAssinadas={cotacaoUrlsAssinadas}
             documentacaoBaixaAdiantamentoUrlsAssinadas={documentacaoBaixaAdiantamentoUrlsAssinadas}
           />
         </div>

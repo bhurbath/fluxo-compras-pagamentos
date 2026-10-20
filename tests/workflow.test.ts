@@ -436,10 +436,29 @@ describe("workflow: criarSolicitacao", () => {
       descricao: "Compra de teclados",
       valor: "500",
       ...campos,
-      cotacaoUrl: "cotacoes/orcamento.pdf",
+      cotacaoUrls: ["cotacoes/orcamento.pdf"],
     });
 
-    expect(solicitacao.cotacaoUrl).toBe("cotacoes/orcamento.pdf");
+    expect(solicitacao.cotacaoUrls).toEqual(["cotacoes/orcamento.pdf"]);
+  });
+
+  it("aceita mais de uma cotação/orçamento, na ordem enviada", async () => {
+    const solicitante = await criarUsuario("sol-cot2");
+    const departamento = await criarDepartamento("mkt-cot2");
+    const tipo = await criarTipoCompra("Mercado Livre");
+    const campos = await criarCamposObrigatorios("cot2");
+
+    const solicitacao = await criarSolicitacao({
+      solicitanteId: solicitante.id,
+      departamentoId: departamento.id,
+      tipoCompraId: tipo.id,
+      descricao: "Compra de teclados",
+      valor: "500",
+      ...campos,
+      cotacaoUrls: ["cotacoes/a.pdf", " cotacoes/b.pdf ", ""],
+    });
+
+    expect(solicitacao.cotacaoUrls).toEqual(["cotacoes/a.pdf", "cotacoes/b.pdf"]);
   });
 
   it("não exige cotação/orçamento — fica nula quando não informada", async () => {
@@ -457,7 +476,7 @@ describe("workflow: criarSolicitacao", () => {
       ...campos,
     });
 
-    expect(solicitacao.cotacaoUrl).toBeNull();
+    expect(solicitacao.cotacaoUrls).toEqual([]);
   });
 
   it("não exige fornecedor nem forma de pagamento quando o tipo de compra dispensa (ex.: Mercado Livre)", async () => {
@@ -1322,15 +1341,15 @@ describe("workflow: editarSolicitacao", () => {
   it("permite anexar/trocar a cotação/orçamento ao editar", async () => {
     await criarFaixa("0", "1000", false);
     const { solicitacao, solicitante } = await criarSolicitacaoRejeitada("e-cot");
-    expect(solicitacao.cotacaoUrl).toBeNull();
+    expect(solicitacao.cotacaoUrls).toEqual([]);
 
     const editada = await editarSolicitacao(
       solicitacao.id,
       solicitante.id,
-      construirInputEdicao(solicitacao, { cotacaoUrl: "cotacoes/nova.pdf" })
+      construirInputEdicao(solicitacao, { cotacaoUrls: ["cotacoes/nova.pdf", "cotacoes/outra.pdf"] })
     );
 
-    expect(editada.cotacaoUrl).toBe("cotacoes/nova.pdf");
+    expect(editada.cotacaoUrls).toEqual(["cotacoes/nova.pdf", "cotacoes/outra.pdf"]);
   });
 
   it("mantém o motivo da rejeição visível depois de editar, antes do reenvio", async () => {
@@ -4682,10 +4701,10 @@ describe("workflow: Adiantamento para Compras Industriais", () => {
       dataVencimento: "2026-10-20",
       numeroPedido: "PED-003",
       fornecedorDocumento: "12.345.678/0001-99",
-      cotacaoUrl: "ai3/cotacao.pdf",
+      cotacaoUrls: ["ai3/cotacao.pdf", "ai3/cotacao-2.pdf"],
     });
 
-    expect(solicitacao.cotacaoUrl).toBe("ai3/cotacao.pdf");
+    expect(solicitacao.cotacaoUrls).toEqual(["ai3/cotacao.pdf", "ai3/cotacao-2.pdf"]);
   });
 
   it("não exige centro de custo/resultado/conta contábil nem forma de pagamento", async () => {

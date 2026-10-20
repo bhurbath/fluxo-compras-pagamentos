@@ -15,23 +15,23 @@ export function DetalhesSolicitacao({
   solicitacao,
   notaFiscalUrlsAssinadas,
   comprovantePagamentoUrlsAssinadas,
-  cotacaoUrlAssinada,
+  cotacaoUrlsAssinadas,
   documentacaoBaixaAdiantamentoUrlsAssinadas,
 }: {
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   // URLs temporárias (Supabase Storage é privado) para baixar os anexos,
   // geradas pelo Server Component pai a partir dos caminhos guardados em
-  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrl/
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrls/
   // documentacaoBaixaAdiantamentoUrls (que não são URLs utilizáveis
   // diretamente) — ver src/lib/storage.ts. Cada entrada de
   // notaFiscalUrlsAssinadas/comprovantePagamentoUrlsAssinadas/
-  // documentacaoBaixaAdiantamentoUrlsAssinadas corresponde, na mesma posição,
-  // a uma entrada de
-  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/documentacaoBaixaAdiantamentoUrls;
-  // null quando a URL não pôde ser gerada.
+  // cotacaoUrlsAssinadas/documentacaoBaixaAdiantamentoUrlsAssinadas
+  // corresponde, na mesma posição, a uma entrada de
+  // solicitacao.notaFiscalUrls/comprovantePagamentoUrls/cotacaoUrls/
+  // documentacaoBaixaAdiantamentoUrls; null quando a URL não pôde ser gerada.
   notaFiscalUrlsAssinadas?: (string | null)[];
   comprovantePagamentoUrlsAssinadas?: (string | null)[];
-  cotacaoUrlAssinada?: string | null;
+  cotacaoUrlsAssinadas?: (string | null)[];
   documentacaoBaixaAdiantamentoUrlsAssinadas?: (string | null)[];
 }) {
   return (
@@ -191,22 +191,29 @@ export function DetalhesSolicitacao({
             <dd>{solicitacao.informacoesComplementares}</dd>
           </div>
         )}
-        {solicitacao.cotacaoUrl && (
+        {solicitacao.cotacaoUrls.length > 0 && (
           <div>
             <dt className="muted">Cotação/orçamento</dt>
-            <dd>
-              {cotacaoUrlAssinada ? (
-                <a
-                  href={cotacaoUrlAssinada}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                >
-                  Baixar cotação
-                </a>
-              ) : (
-                "Link indisponível no momento — atualize a página."
-              )}
+            <dd className="flex flex-col gap-1">
+              {solicitacao.cotacaoUrls.map((_url, indice) => {
+                const urlAssinada = cotacaoUrlsAssinadas?.[indice];
+                return (
+                  <span key={indice}>
+                    {urlAssinada ? (
+                      <a
+                        href={urlAssinada}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="link"
+                      >
+                        Baixar cotação{solicitacao.cotacaoUrls.length > 1 ? ` ${indice + 1}` : ""}
+                      </a>
+                    ) : (
+                      "Link indisponível no momento — atualize a página."
+                    )}
+                  </span>
+                );
+              })}
             </dd>
           </div>
         )}

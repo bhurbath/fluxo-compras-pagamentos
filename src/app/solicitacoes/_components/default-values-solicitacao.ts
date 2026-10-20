@@ -20,7 +20,7 @@ export function construirDefaultValuesSolicitacao(
     empresaId: solicitacao.empresaId,
     linkCompra: solicitacao.linkCompra,
     informacoesComplementares: solicitacao.informacoesComplementares,
-    temCotacao: Boolean(solicitacao.cotacaoUrl),
+    temCotacao: solicitacao.cotacaoUrls.length > 0,
     semCompra: solicitacao.semCompra,
     metodoPagamento: solicitacao.metodoPagamento,
     dadosPagamento: solicitacao.dadosPagamento,

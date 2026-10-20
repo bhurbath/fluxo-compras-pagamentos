@@ -370,9 +370,13 @@ model Solicitacao {
   empresa                   Empresa          @relation(fields: [empresaId], references: [id])
   linkCompra                String?
   informacoesComplementares String?
-  // Cotação/orçamento anexado pelo solicitante na criação, para apoiar a
-  // decisão do aprovador — opcional, diferente de notaFiscalUrl (que só
-  // existe depois da compra/pagamento).
+  // Cotações/orçamentos anexados pelo solicitante na criação, para apoiar a
+  // decisão do aprovador — opcionais, diferente de notaFiscalUrls (que só
+  // existem depois da compra/pagamento).
+  cotacaoUrls               String[]         @default([])
+  // LEGADO: substituído por cotacaoUrls (a migração copiou os valores
+  // existentes). Nenhum código lê nem grava mais — fica só até a próxima
+  // migração apagar a coluna, para o deploy não derrubar o sistema no ar.
   cotacaoUrl                String?
 
   // Despesa de pessoal (ver TipoCompra.despesaPessoal): categoria escolhida
