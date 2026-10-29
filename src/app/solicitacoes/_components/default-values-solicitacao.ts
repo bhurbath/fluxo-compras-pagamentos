@@ -38,3 +38,25 @@ export function construirDefaultValuesSolicitacao(
     dataDespesa: solicitacao.dataDespesa?.toISOString().slice(0, 10) ?? null,
   };
 }
+
+// "Copiar solicitação" — abre o formulário de uma solicitação NOVA a partir
+// dos dados de outra (ver /solicitacoes/nova?copiarDe=). Fica de fora o que
+// não faz sentido repetir: anexos e cotações (são documentos de cada
+// pagamento — o formulário volta a pedi-los) e as datas e números próprios
+// daquela ocorrência (vencimento, data da RDV/da despesa, nº do pedido, nº da
+// RDV), que numa cópia seriam do mês passado. Os demais campos, inclusive o
+// valor, vêm preenchidos para a pessoa só ajustar o que mudou.
+export function construirDefaultValuesCopia(
+  solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>
+) {
+  return {
+    ...construirDefaultValuesSolicitacao(solicitacao),
+    temCotacao: false,
+    temAnexo: false,
+    dataVencimento: null,
+    dataRdv: null,
+    dataDespesa: null,
+    numeroPedido: null,
+    numeroRdv: null,
+  };
+}

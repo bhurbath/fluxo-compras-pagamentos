@@ -221,6 +221,14 @@ export default async function SolicitacaoDetalhePage({
             cotacaoUrlsAssinadas={cotacaoUrlsAssinadas}
             documentacaoBaixaAdiantamentoUrlsAssinadas={documentacaoBaixaAdiantamentoUrlsAssinadas}
           />
+
+          {solicitacao.solicitanteId === usuario.id && (
+            <div>
+              <Link href={`/solicitacoes/nova?copiarDe=${solicitacao.id}`} className="btn-secondary">
+                Copiar solicitação
+              </Link>
+            </div>
+          )}
         </div>
 
         {podeAprovarNivel1 && (
