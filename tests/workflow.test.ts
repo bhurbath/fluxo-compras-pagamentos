@@ -6,6 +6,7 @@ import { adicionarDiasUteis } from "@/lib/dias-uteis";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  baixarSemComprovante,
   confirmarBaixaAdiantamento,
   confirmarComprovante,
   confirmarCompra,
@@ -2852,6 +2853,68 @@ describe("workflow: confirmarComprovante", () => {
     expect(html).toContain("https://exemplo.com/banco");
     expect(html).toContain("https://exemplo.com/extrato");
   });
+
+  describe("baixarSemComprovante", () => {
+    it("conclui a solicitação sem comprovante, indo para PAGO", async () => {
+      const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("bs1");
+
+      const paga = await baixarSemComprovante(solicitacao.id, financeiro.id);
+
+      expect(paga.status).toBe("PAGO");
+      expect(paga.comprovantePagamentoUrls).toEqual([]);
+    });
+
+    it("grava o evento pago, com o detalhe de que foi sem comprovante", async () => {
+      const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("bs2");
+
+      await baixarSemComprovante(solicitacao.id, financeiro.id);
+
+      const historico = await testDb.solicitacaoHistorico.findMany({
+        where: { solicitacaoId: solicitacao.id },
+        orderBy: { criadoEm: "asc" },
+      });
+      expect(historico.at(-1)?.evento).toBe("pago");
+      expect(historico.at(-1)?.atorId).toBe(financeiro.id);
+      expect(historico.at(-1)?.detalhe).toContain("sem comprovante");
+    });
+
+    it("notifica o solicitante por e-mail", async () => {
+      const { solicitacao, solicitante, financeiro } =
+        await criarSolicitacaoAguardandoComprovante("bs3");
+      const enviarSpy = vi.spyOn(fake, "send");
+      enviarSpy.mockClear();
+
+      await baixarSemComprovante(solicitacao.id, financeiro.id);
+
+      expect(enviarSpy).toHaveBeenCalledWith(expect.objectContaining({ to: solicitante.email }));
+    });
+
+    it("lança erro se quem dá a baixa não é do Financeiro", async () => {
+      const { solicitacao } = await criarSolicitacaoAguardandoComprovante("bs4");
+      const naoFinanceiro = await criarUsuario("naofin-bs4");
+
+      await expect(baixarSemComprovante(solicitacao.id, naoFinanceiro.id)).rejects.toThrow();
+      const aindaAguardando = await testDb.solicitacao.findUniqueOrThrow({
+        where: { id: solicitacao.id },
+      });
+      expect(aindaAguardando.status).toBe("AGUARDANDO_COMPROVANTE");
+    });
+
+    it("lança erro se a solicitação não está aguardando comprovante", async () => {
+      const { solicitacao } = await criarSolicitacaoAguardandoPagamento("bs5");
+      const financeiro = await criarUsuario("fin-bs5");
+      await testDb.usuario.update({ where: { id: financeiro.id }, data: { flagFinanceiro: true } });
+
+      await expect(baixarSemComprovante(solicitacao.id, financeiro.id)).rejects.toThrow();
+    });
+
+    it("não permite dar baixa duas vezes", async () => {
+      const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("bs6");
+      await baixarSemComprovante(solicitacao.id, financeiro.id);
+
+      await expect(baixarSemComprovante(solicitacao.id, financeiro.id)).rejects.toThrow();
+    });
+  });
 });
 
 describe("workflow: adiantamento em Compras pelo solicitante", () => {
@@ -2925,6 +2988,20 @@ describe("workflow: adiantamento em Compras pelo solicitante", () => {
     });
     return { solicitacao: enviada, solicitante, financeiro };
   }
+
+  it("baixa sem comprovante não conclui o adiantamento: vai para a prestação de contas", async () => {
+    const { solicitacao, financeiro } =
+      await criarSolicitacaoAdiantamentoAguardandoComprovante("ad-bs");
+
+    const baixada = await baixarSemComprovante(solicitacao.id, financeiro.id);
+
+    expect(baixada.status).toBe("AGUARDANDO_PRESTACAO_CONTAS");
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.at(-1)?.evento).toBe("baixa_sem_comprovante");
+  });
 
   it("após aprovado, vai direto para AGUARDANDO_PAGAMENTO com o solicitante como comprador designado", async () => {
     const { solicitacao, solicitante } =

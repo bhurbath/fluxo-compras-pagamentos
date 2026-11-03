@@ -1,15 +1,21 @@
+import { ExcluirButton } from "@/app/admin/_components/excluir-button";
+
 // Segunda etapa da confirmação de pagamento (ver confirmarComprovante em
 // workflow.ts) — só aparece depois que o Financeiro já registrou o
 // pagamento (PainelRegistrarPagamento) e a solicitação ficou aguardando o
 // comprovante. Não tem opção de recusar aqui — o pagamento já foi feito,
 // só falta anexar o comprovante. Aceita mais de um arquivo (ex.:
-// comprovante do banco + extrato).
+// comprovante do banco + extrato). Quando não há comprovante a anexar, "Dar
+// baixa sem comprovante" conclui a solicitação sem ele (ver
+// baixarSemComprovante em workflow.ts).
 export function PainelConfirmarComprovante({
   solicitacaoId,
   action,
+  baixarSemComprovanteAction,
 }: {
   solicitacaoId: string;
   action: (id: string, formData: FormData) => Promise<void>;
+  baixarSemComprovanteAction: (id: string, formData: FormData) => Promise<void>;
 }) {
   return (
     <div className="card-block">
@@ -34,6 +40,16 @@ export function PainelConfirmarComprovante({
           Confirmar comprovante
         </button>
       </form>
+      <p className="muted-xs">Não há comprovante para anexar?</p>
+      <div>
+        <ExcluirButton
+          action={baixarSemComprovanteAction.bind(null, solicitacaoId)}
+          confirmMessage="Dar baixa sem comprovante? A solicitação será concluída sem nenhum comprovante anexado."
+          label="Dar baixa sem comprovante"
+          labelPendente="Dando baixa…"
+          className="link"
+        />
+      </div>
     </div>
   );
 }

@@ -2024,6 +2024,68 @@ export async function confirmarComprovante(
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
+// Alternativa a confirmarComprovante: o pagamento já foi lançado
+// (registrarPagamento) e o Financeiro dá a baixa sem anexar comprovante
+// nenhum — para quando não existe um a anexar. Mesma transição de
+// confirmarComprovante (PAGO, ou AGUARDANDO_PRESTACAO_CONTAS no adiantamento
+// em "Compras pelo solicitante", que ainda precisa da prestação de contas).
+// Fora do adiantamento o evento continua sendo "pago" — é ele que fecha o
+// ciclo nos relatórios de SLA —, com o detalhe dizendo que foi sem
+// comprovante; no adiantamento, um evento próprio, para a linha do tempo não
+// afirmar que um comprovante foi anexado.
+export async function baixarSemComprovante(id: string, atorId: string) {
+  const [, solicitacao] = await Promise.all([
+    requireFinanceiroAtor(atorId, "Só o Financeiro pode dar baixa em um pagamento."),
+    getDb().solicitacao.findUnique({
+      where: { id },
+      include: { solicitante: true, tipoCompra: true },
+    }),
+  ]);
+  if (!solicitacao) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (solicitacao.status !== StatusSolicitacao.AGUARDANDO_COMPROVANTE) {
+    throw new Error(
+      "Só é possível dar baixa sem comprovante em uma solicitação que está aguardando comprovante."
+    );
+  }
+
+  const ehAdiantamento = ehAdiantamentoCompradorSolicitante(solicitacao);
+  const novoStatus = ehAdiantamento
+    ? StatusSolicitacao.AGUARDANDO_PRESTACAO_CONTAS
+    : StatusSolicitacao.PAGO;
+
+  await atualizarStatusComGuarda(
+    id,
+    StatusSolicitacao.AGUARDANDO_COMPROVANTE,
+    { status: novoStatus },
+    "Essa solicitação já foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+
+  await registrarHistorico(
+    id,
+    ehAdiantamento ? "baixa_sem_comprovante" : "pago",
+    atorId,
+    "Baixa registrada sem comprovante."
+  );
+
+  await getEmailSender().send({
+    to: solicitacao.solicitante.email,
+    subject: "Pagamento concluído",
+    html:
+      `<p>Olá, ${solicitacao.solicitante.nome}.</p>` +
+      `<p>O pagamento da sua solicitação "${solicitacao.descricao}" ` +
+      `(${formatarReais(solicitacao.valor)}) foi concluído, sem comprovante anexado.</p>` +
+      (ehAdiantamento
+        ? "<p>Como comprador designado, agora você precisa anexar a documentação de " +
+          "baixa do adiantamento (notas fiscais, recibos etc.) na página da solicitação.</p>"
+        : "") +
+      linkAcessoHtml(id),
+  });
+
+  return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
+}
+
 export type SubmeterPrestacaoContasAdiantamentoInput = {
   // Um ou mais caminhos no bucket de Storage — mesma convenção de
   // ConfirmarComprovanteInput.comprovantePagamentoUrls.

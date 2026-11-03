@@ -9,6 +9,7 @@ import { gerarUrlAssinada, uploadAnexo } from "@/lib/storage";
 import {
   aprovarNivel1,
   aprovarNivel2,
+  baixarSemComprovante,
   confirmarBaixaAdiantamento,
   confirmarComprovante,
   designarCompradorManualmente,
@@ -127,6 +128,21 @@ export const confirmarComprovanteAction = withFinanceiro(
         comprovantePagamentoUrls,
         comprovanteUrlsAssinadas,
       });
+    } catch (error) {
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// Alternativa à segunda etapa (ver baixarSemComprovante em workflow.ts): dá a
+// baixa sem anexar comprovante. Sem upload nenhum, só a confirmação.
+export const baixarSemComprovanteAction = withFinanceiro(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async (usuario, id: string, _formData: FormData) => {
+    try {
+      await baixarSemComprovante(id, usuario.id);
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }

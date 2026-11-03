@@ -43,6 +43,7 @@ const EVENTO_PARA_CATEGORIA: Record<string, CategoriaSla | null> = {
   pagamento_recusado_encerrado: null,
   aguardando_comprovante: "financeiroAnexarComprovante",
   comprovante_anexado: "compradorPrestarContas",
+  baixa_sem_comprovante: "compradorPrestarContas",
   prestacao_contas_adiantamento_enviada: "financeiroConfirmarBaixa",
   pago: null,
 };

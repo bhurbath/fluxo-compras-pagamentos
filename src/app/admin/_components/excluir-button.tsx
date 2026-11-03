@@ -12,11 +12,13 @@ export function ExcluirButton({
   confirmMessage,
   label = "Excluir",
   labelPendente = "Excluindo…",
+  className = "link-danger",
 }: {
   action: (formData: FormData) => Promise<void>;
   confirmMessage: string;
   label?: string;
   labelPendente?: string;
+  className?: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -24,7 +26,7 @@ export function ExcluirButton({
     <button
       type="button"
       disabled={pending}
-      className="link-danger"
+      className={className}
       onClick={() => {
         if (!confirm(confirmMessage)) return;
         startTransition(() => {

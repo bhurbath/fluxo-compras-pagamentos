@@ -4,6 +4,7 @@ import { StatusSolicitacao } from "@prisma/client";
 import {
   aprovarNivel1Action,
   aprovarNivel2Action,
+  baixarSemComprovanteAction,
   confirmarBaixaAdiantamentoAction,
   confirmarComprovanteAction,
   designarCompradorManualmenteAction,
@@ -352,6 +353,7 @@ export default async function SolicitacaoDetalhePage({
           <PainelConfirmarComprovante
             solicitacaoId={solicitacao.id}
             action={confirmarComprovanteAction}
+            baixarSemComprovanteAction={baixarSemComprovanteAction}
           />
         )}
 
