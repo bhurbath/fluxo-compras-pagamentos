@@ -12,6 +12,7 @@ import {
   confirmarCompra,
   criarSolicitacao,
   designarCompradorManualmente,
+  DIAS_VALIDADE_LINK_COMPROVANTE,
   editarRascunho,
   editarSolicitacao,
   encerrarSolicitacaoPagamentoRecusado,
@@ -2852,6 +2853,21 @@ describe("workflow: confirmarComprovante", () => {
     expect(html).toContain("Baixar comprovante 2");
     expect(html).toContain("https://exemplo.com/banco");
     expect(html).toContain("https://exemplo.com/extrato");
+  });
+
+  it("informa no e-mail que os links de comprovante valem por 30 dias", async () => {
+    const { solicitacao, financeiro } = await criarSolicitacaoAguardandoComprovante("cc9");
+    const enviarSpy = vi.spyOn(fake, "send");
+    enviarSpy.mockClear();
+
+    await confirmarComprovante(solicitacao.id, financeiro.id, {
+      comprovantePagamentoUrls: ["cc9/comprovante.pdf"],
+      comprovanteUrlsAssinadas: ["https://exemplo.com/comprovante"],
+    });
+
+    const [{ html }] = enviarSpy.mock.calls.at(-1)!;
+    expect(DIAS_VALIDADE_LINK_COMPROVANTE).toBe(30);
+    expect(html).toContain("link válido por 30 dias");
   });
 
   describe("baixarSemComprovante", () => {

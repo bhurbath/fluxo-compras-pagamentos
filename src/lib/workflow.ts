@@ -1934,6 +1934,13 @@ export async function registrarPagamento(
   return getDb().solicitacao.findUniqueOrThrow({ where: { id } });
 }
 
+// Validade do link de comprovante enviado por e-mail (ver
+// confirmarComprovanteAction, que gera o link, e o texto do e-mail em
+// confirmarComprovante) — maior que a de uma página (1h) porque o e-mail
+// pode ser aberto semanas depois. Depois disso o comprovante continua na
+// página da solicitação.
+export const DIAS_VALIDADE_LINK_COMPROVANTE = 30;
+
 export type ConfirmarComprovanteInput = {
   // Um ou mais caminhos no bucket de Storage, não URLs públicas — ver
   // src/lib/storage.ts. Pelo menos um sempre obrigatório aqui: só chega a
@@ -2012,7 +2019,7 @@ export async function confirmarComprovante(
                 `<a href="${url}">Baixar comprovante${linksComprovante.length > 1 ? ` ${indice + 1}` : ""}</a>`
             )
             .join(" — ") +
-          " (link válido por 7 dias).</p>"
+          ` (link válido por ${DIAS_VALIDADE_LINK_COMPROVANTE} dias).</p>`
         : "<p>O comprovante já está disponível na página da solicitação.</p>") +
       (ehAdiantamento
         ? "<p>Como comprador designado, agora você precisa anexar a documentação de " +

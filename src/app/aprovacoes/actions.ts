@@ -12,6 +12,7 @@ import {
   baixarSemComprovante,
   confirmarBaixaAdiantamento,
   confirmarComprovante,
+  DIAS_VALIDADE_LINK_COMPROVANTE,
   designarCompradorManualmente,
   registrarPagamento,
   recusarPagamento,
@@ -122,7 +123,7 @@ export const confirmarComprovanteAction = withFinanceiro(
       // Validade maior que o padrão de página (1h) — o e-mail pode ser
       // aberto dias depois de enviado.
       const comprovanteUrlsAssinadas = await Promise.all(
-        comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url, 7 * 24 * 60 * 60))
+        comprovantePagamentoUrls.map((url) => gerarUrlAssinada(url, DIAS_VALIDADE_LINK_COMPROVANTE * 24 * 60 * 60))
       );
       await confirmarComprovante(id, usuario.id, {
         comprovantePagamentoUrls,
