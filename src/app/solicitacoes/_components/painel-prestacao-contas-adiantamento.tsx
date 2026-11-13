@@ -1,3 +1,5 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
+
 // Terceira etapa, exclusiva do adiantamento em "Compras pelo solicitante"
 // (ver submeterPrestacaoContasAdiantamento em workflow.ts) — só aparece para
 // o comprador designado (= o próprio solicitante) depois que o Financeiro já
@@ -30,9 +32,7 @@ export function PainelPrestacaoContasAdiantamento({
             className="input-field"
           />
         </label>
-        <button type="submit" className="btn-primary">
-          Enviar documentação
-        </button>
+        <BotaoEnviar labelPendente="Enviando…">Enviar documentação</BotaoEnviar>
       </form>
     </div>
   );

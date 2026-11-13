@@ -1,3 +1,4 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
 import { ExcluirButton } from "@/app/admin/_components/excluir-button";
 
 // Segunda etapa da confirmação de pagamento (ver confirmarComprovante em
@@ -36,9 +37,7 @@ export function PainelConfirmarComprovante({
             className="input-field"
           />
         </label>
-        <button type="submit" className="btn-primary">
-          Confirmar comprovante
-        </button>
+        <BotaoEnviar labelPendente="Enviando comprovante…">Confirmar comprovante</BotaoEnviar>
       </form>
       <p className="muted-xs">Não há comprovante para anexar?</p>
       <div>

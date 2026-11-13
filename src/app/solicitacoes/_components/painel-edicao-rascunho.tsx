@@ -1,3 +1,4 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
 import { CamposSolicitacao } from "./campos-solicitacao";
 import { construirDefaultValuesSolicitacao } from "./default-values-solicitacao";
 import { ExcluirButton } from "@/app/admin/_components/excluir-button";
@@ -9,7 +10,7 @@ import type { obterSolicitacao } from "@/lib/workflow";
 // nunca para RASCUNHO. Dois botões, como em /solicitacoes/nova: "Salvar
 // rascunho" grava e continua em rascunho, "Enviar" grava e já manda para a
 // primeira aprovação necessária. "Excluir" some com o rascunho de vez (ver
-// excluirRascunho em workflow.ts) — sem isso, um rascunho criado por engano
+// excluirSolicitacao em workflow.ts) — sem isso, um rascunho criado por engano
 // ficava para sempre em "Minhas solicitações".
 export function PainelEdicaoRascunho({
   solicitacao,
@@ -48,20 +49,21 @@ export function PainelEdicaoRascunho({
           dataVencimentoMinima={dataVencimentoMinima}
         />
         <div className="flex gap-3 items-center" style={{ marginTop: "0.25rem" }}>
-          <button
-            type="submit"
+          <BotaoEnviar
+            id="salvar"
             formAction={salvarAction.bind(null, solicitacao.id)}
             className="btn-secondary"
+            labelPendente="Salvando…"
           >
             Salvar rascunho
-          </button>
-          <button
-            type="submit"
+          </BotaoEnviar>
+          <BotaoEnviar
+            id="enviar"
             formAction={enviarAction.bind(null, solicitacao.id)}
-            className="btn-primary"
+            labelPendente="Enviando…"
           >
             Enviar
-          </button>
+          </BotaoEnviar>
           <div style={{ marginLeft: "auto" }}>
             <ExcluirButton
               action={excluirAction.bind(null, solicitacao.id)}

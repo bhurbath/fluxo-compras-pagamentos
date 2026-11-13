@@ -1,3 +1,5 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
+
 // Primeira etapa da confirmação de pagamento (ver registrarPagamento em
 // workflow.ts) — nunca pede comprovante aqui, nem para os tipos de compra
 // que exigem um: isso fica pra PainelConfirmarComprovante, a segunda etapa,
@@ -27,9 +29,7 @@ export function PainelRegistrarPagamento({
             className="input-field"
           />
         </label>
-        <button type="submit" className="btn-primary">
-          Registrar pagamento
-        </button>
+        <BotaoEnviar labelPendente="Registrando…">Registrar pagamento</BotaoEnviar>
       </form>
       <form
         action={recusarAction.bind(null, solicitacaoId)}
@@ -43,9 +43,7 @@ export function PainelRegistrarPagamento({
             className="input-field"
           />
         </label>
-        <button type="submit" className="btn-secondary">
-          Recusar
-        </button>
+        <BotaoEnviar labelPendente="Recusando…" className="btn-secondary">Recusar</BotaoEnviar>
       </form>
     </div>
   );

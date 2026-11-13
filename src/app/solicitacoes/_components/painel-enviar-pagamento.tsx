@@ -1,3 +1,4 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
 import { METODO_PAGAMENTO_LEGIVEL } from "./metodo-pagamento-legivel";
 
 export function PainelEnviarPagamento({
@@ -76,9 +77,7 @@ export function PainelEnviarPagamento({
             className="input-field"
           />
         </label>
-        <button type="submit" className="btn-primary">
-          Enviar para pagamento
-        </button>
+        <BotaoEnviar labelPendente="Enviando…">Enviar para pagamento</BotaoEnviar>
       </form>
     </div>
   );

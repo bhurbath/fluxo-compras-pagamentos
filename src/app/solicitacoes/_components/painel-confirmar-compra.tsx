@@ -1,3 +1,5 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
+
 export function PainelConfirmarCompra({
   solicitacaoId,
   action,
@@ -35,9 +37,7 @@ export function PainelConfirmarCompra({
             />
           </label>
         )}
-        <button type="submit" className="btn-primary">
-          Confirmar compra
-        </button>
+        <BotaoEnviar labelPendente="Confirmando…">Confirmar compra</BotaoEnviar>
       </form>
 
       {exigePrevisaoChegada && (
@@ -53,9 +53,9 @@ export function PainelConfirmarCompra({
               className="input-field"
             />
           </label>
-          <button type="submit" className="btn-secondary">
+          <BotaoEnviar labelPendente="Registrando recusa…" className="btn-secondary">
             Não foi possível comprar
-          </button>
+          </BotaoEnviar>
         </form>
       )}
     </div>

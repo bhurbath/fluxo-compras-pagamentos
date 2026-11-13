@@ -1,3 +1,5 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
+
 export function PainelDesignacaoComprador({
   solicitacaoId,
   funcionarios,
@@ -31,9 +33,7 @@ export function PainelDesignacaoComprador({
             ))}
           </select>
         </label>
-        <button type="submit" className="btn-primary">
-          Designar
-        </button>
+        <BotaoEnviar labelPendente="Designando…">Designar</BotaoEnviar>
       </form>
     </div>
   );

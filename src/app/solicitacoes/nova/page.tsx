@@ -1,3 +1,4 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
 import { redirect } from "next/navigation";
 import { criarEEnviarAction, criarRascunhoAction } from "../actions";
 import { CamposSolicitacao } from "../_components/campos-solicitacao";
@@ -62,20 +63,21 @@ export default async function NovaSolicitacaoPage({
               dataVencimentoMinima={dataVencimentoMinima}
             />
             <div className="flex gap-3" style={{ marginTop: "0.25rem" }}>
-              <button
-                type="submit"
+              <BotaoEnviar
+                id="salvar"
                 formAction={criarRascunhoAction}
                 className="btn-secondary"
+                labelPendente="Salvando…"
               >
                 Salvar rascunho
-              </button>
-              <button
-                type="submit"
+              </BotaoEnviar>
+              <BotaoEnviar
+                id="enviar"
                 formAction={criarEEnviarAction}
-                className="btn-primary"
+                labelPendente="Enviando…"
               >
                 Enviar
-              </button>
+              </BotaoEnviar>
             </div>
           </form>
         </div>
