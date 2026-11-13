@@ -19,7 +19,8 @@ import {
   encerrarSolicitacaoRejeitada,
   enviarParaPagamento,
   enviarSolicitacao,
-  excluirRascunho,
+  editarAntesDaAprovacao,
+  excluirSolicitacao,
   listarMinhasSolicitacoes,
   listarPendentesComprador,
   listarPendentesComprovante,
@@ -1505,10 +1506,13 @@ describe("workflow: editarRascunho", () => {
   });
 });
 
-describe("workflow: excluirRascunho", () => {
+describe("workflow: excluirSolicitacao", () => {
+  let fake: FakeEmailSender;
+
   beforeEach(async () => {
     await resetDb();
-    setEmailSender(new FakeEmailSender());
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
   });
 
   // Regressão: um rascunho criado por engano não tinha como sair de "Minhas
@@ -1516,7 +1520,7 @@ describe("workflow: excluirRascunho", () => {
   it("apaga o rascunho e seu histórico", async () => {
     const { solicitacao, solicitante } = await criarSolicitacaoRascunho("ex1");
 
-    await excluirRascunho(solicitacao.id, solicitante.id);
+    await excluirSolicitacao(solicitacao.id, solicitante.id);
 
     const encontrada = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
     expect(encontrada).toBeNull();
@@ -1524,14 +1528,46 @@ describe("workflow: excluirRascunho", () => {
       where: { solicitacaoId: solicitacao.id },
     });
     expect(historico).toHaveLength(0);
+    expect(fake.sent).toHaveLength(0);
   });
 
-  it("lança erro se a solicitação não está em rascunho", async () => {
+  it("apaga uma solicitação aguardando nível 1 e avisa o responsável", async () => {
     await criarFaixa("0", "1000", false);
-    const { solicitacao, solicitante } = await criarSolicitacaoEnviada("ex2");
+    const { solicitacao, solicitante, departamento } = await criarSolicitacaoEnviada("ex2");
+    const responsavel = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.responsavelId },
+    });
+    fake.sent = [];
 
-    await expect(excluirRascunho(solicitacao.id, solicitante.id)).rejects.toThrow();
-    const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    await excluirSolicitacao(solicitacao.id, solicitante.id);
+
+    const encontrada = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    expect(encontrada).toBeNull();
+    expect(fake.sent).toHaveLength(1);
+    expect(fake.sent[0].to).toBe(responsavel.email);
+    expect(fake.sent[0].subject).toContain("excluída");
+  });
+
+  it("apaga uma solicitação aguardando nível 2 e avisa o diretor", async () => {
+    const { solicitacao, solicitante, departamento } =
+      await criarSolicitacaoAguardandoNivel2("ex4");
+    const diretor = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.diretorId },
+    });
+    fake.sent = [];
+
+    await excluirSolicitacao(solicitacao.id, solicitante.id);
+
+    const encontrada = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
+    expect(encontrada).toBeNull();
+    expect(fake.sent.map((m) => m.to)).toEqual([diretor.email]);
+  });
+
+  it("lança erro se a solicitação já foi aprovada", async () => {
+    const aprovada = await criarSolicitacaoAprovada("ex5");
+
+    await expect(excluirSolicitacao(aprovada.id, aprovada.solicitanteId)).rejects.toThrow();
+    const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: aprovada.id } });
     expect(aindaExiste).not.toBeNull();
   });
 
@@ -1539,9 +1575,94 @@ describe("workflow: excluirRascunho", () => {
     const { solicitacao } = await criarSolicitacaoRascunho("ex3");
     const intruso = await criarUsuario("intruso-ex3");
 
-    await expect(excluirRascunho(solicitacao.id, intruso.id)).rejects.toThrow();
+    await expect(excluirSolicitacao(solicitacao.id, intruso.id)).rejects.toThrow();
     const aindaExiste = await testDb.solicitacao.findUnique({ where: { id: solicitacao.id } });
     expect(aindaExiste).not.toBeNull();
+  });
+});
+
+describe("workflow: editarAntesDaAprovacao", () => {
+  let fake: FakeEmailSender;
+
+  beforeEach(async () => {
+    await resetDb();
+    fake = new FakeEmailSender();
+    setEmailSender(fake);
+  });
+
+  it("edita uma solicitação aguardando nível 1 e reenvia ao responsável", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao, solicitante, departamento } = await criarSolicitacaoEnviada("ea1");
+    const responsavel = await testDb.usuario.findUniqueOrThrow({
+      where: { id: departamento.responsavelId },
+    });
+    fake.sent = [];
+
+    const editada = await editarAntesDaAprovacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { descricao: "Descrição corrigida" })
+    );
+
+    expect(editada.descricao).toBe("Descrição corrigida");
+    expect(editada.status).toBe("ENVIADO");
+    expect(fake.sent.map((m) => m.to)).toContain(responsavel.email);
+    const historico = await testDb.solicitacaoHistorico.findMany({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { criadoEm: "asc" },
+    });
+    expect(historico.map((h) => h.evento)).toEqual([
+      "rascunho_criado",
+      "enviado",
+      "editado_antes_aprovacao",
+      "reenviado",
+    ]);
+  });
+
+  // A aprovação de nível 1 já dada não pode valer para dados que o
+  // responsável não viu — recomeça do zero.
+  it("volta para o nível 1 quando editada aguardando o nível 2", async () => {
+    const { solicitacao, solicitante } = await criarSolicitacaoAguardandoNivel2("ea2");
+
+    const editada = await editarAntesDaAprovacao(
+      solicitacao.id,
+      solicitante.id,
+      construirInputEdicao(solicitacao, { valor: "800" })
+    );
+
+    expect(editada.status).toBe("ENVIADO");
+    expect(editada.valor.toString()).toBe("800");
+  });
+
+  it("lança erro se a solicitação já foi aprovada", async () => {
+    const aprovada = await criarSolicitacaoAprovada("ea3");
+
+    await expect(
+      editarAntesDaAprovacao(
+        aprovada.id,
+        aprovada.solicitanteId,
+        construirInputEdicao(aprovada, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+    const intacta = await testDb.solicitacao.findUniqueOrThrow({ where: { id: aprovada.id } });
+    expect(intacta.descricao).toBe("Compra de teste");
+    expect(intacta.status).toBe("APROVADO");
+  });
+
+  it("lança erro se quem edita não é o solicitante", async () => {
+    await criarFaixa("0", "1000", false);
+    const { solicitacao } = await criarSolicitacaoEnviada("ea4");
+    const intruso = await criarUsuario("intruso-ea4");
+
+    await expect(
+      editarAntesDaAprovacao(
+        solicitacao.id,
+        intruso.id,
+        construirInputEdicao(solicitacao, { descricao: "Tentativa" })
+      )
+    ).rejects.toThrow();
+    const intacta = await testDb.solicitacao.findUniqueOrThrow({ where: { id: solicitacao.id } });
+    expect(intacta.status).toBe("ENVIADO");
   });
 });
 

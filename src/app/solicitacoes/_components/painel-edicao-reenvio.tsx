@@ -1,3 +1,4 @@
+import { BotaoEnviar } from "@/app/_components/botao-enviar";
 import { CamposSolicitacao } from "./campos-solicitacao";
 import { construirDefaultValuesSolicitacao } from "./default-values-solicitacao";
 import type { listarListasSolicitacao } from "@/lib/solicitacao-listas";
@@ -9,7 +10,13 @@ export function PainelEdicaoReenvio({
   action,
   dataVencimentoMinima,
   valoresPreservados,
+  titulo = "Editar e reenviar",
+  aviso,
 }: {
+  // Reaproveitado para editar uma solicitação ainda aguardando aprovação
+  // (ver editarAntesDaAprovacao) — mesmo formulário, título e aviso próprios.
+  titulo?: string;
+  aviso?: string;
   solicitacao: NonNullable<Awaited<ReturnType<typeof obterSolicitacao>>>;
   listas: Awaited<ReturnType<typeof listarListasSolicitacao>>;
   action: (id: string, formData: FormData) => Promise<void>;
@@ -23,7 +30,8 @@ export function PainelEdicaoReenvio({
 }) {
   return (
     <div className="card-block">
-      <h2 className="section-title">Editar e reenviar</h2>
+      <h2 className="section-title">{titulo}</h2>
+      {aviso && <p className="muted">{aviso}</p>}
       <form
         action={action.bind(null, solicitacao.id)}
         className="flex flex-col gap-3"
@@ -35,9 +43,7 @@ export function PainelEdicaoReenvio({
           {...listas}
           dataVencimentoMinima={dataVencimentoMinima}
         />
-        <button type="submit" className="btn-primary">
-          Salvar e reenviar
-        </button>
+        <BotaoEnviar labelPendente="Reenviando…">Salvar e reenviar</BotaoEnviar>
       </form>
     </div>
   );

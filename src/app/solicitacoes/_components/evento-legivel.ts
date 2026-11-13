@@ -10,6 +10,7 @@ export const EVENTO_LEGIVEL: Record<string, string> = {
   aguardando_nivel2: "Aprovado (nível 1) — aguardando aprovação do diretor",
   aprovado: "Aprovado",
   editado_apos_rejeicao: "Editado após rejeição",
+  editado_antes_aprovacao: "Editado pelo solicitante antes da aprovação",
   rejeitado: "Rejeitado",
   encerrado_apos_rejeicao: "Encerrado pelo solicitante",
   comprador_designado: "Comprador designado",

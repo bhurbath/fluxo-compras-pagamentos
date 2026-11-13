@@ -574,9 +574,12 @@ async function processarEdicaoSolicitacao(
   id: string,
   atorId: string,
   input: CriarSolicitacaoInput,
-  statusOrigem: typeof StatusSolicitacao.RASCUNHO | typeof StatusSolicitacao.REJEITADO,
+  statusOrigem: StatusSolicitacao,
   eventoEdicao: string,
-  mensagemStatusInvalido: string
+  mensagemStatusInvalido: string,
+  // Só editarAntesDaAprovacao usa: grava junto, na mesma atualização com
+  // guarda, a volta para RASCUNHO — ver o comentário dela.
+  dadosExtras: Prisma.SolicitacaoUncheckedUpdateManyInput = {}
 ) {
   const tipoCompra = await obterTipoCompraOuLancar(input.tipoCompraId);
   validarCriarSolicitacao(input, tipoCompra);
@@ -603,7 +606,7 @@ async function processarEdicaoSolicitacao(
   await atualizarStatusComGuarda(
     id,
     statusOrigem,
-    mapCamposSolicitacao(input, tipoCompra),
+    { ...mapCamposSolicitacao(input, tipoCompra), ...dadosExtras },
     "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
   );
 
@@ -644,30 +647,104 @@ export async function editarRascunho(id: string, atorId: string, input: CriarSol
   );
 }
 
+// Enviada, mas ninguém deu a aprovação final ainda (nem o nível 1, nem —
+// quando exigido — o nível 2). Até aqui o solicitante ainda pode editar
+// (editarAntesDaAprovacao) ou excluir (excluirSolicitacao) por conta própria.
+const STATUS_AGUARDANDO_APROVACAO: StatusSolicitacao[] = [
+  StatusSolicitacao.ENVIADO,
+  StatusSolicitacao.AGUARDANDO_NIVEL2,
+];
+
+export function estaAguardandoAprovacao(status: StatusSolicitacao): boolean {
+  return STATUS_AGUARDANDO_APROVACAO.includes(status);
+}
+
+// Corrigir uma solicitação já enviada, antes da aprovação final. A
+// aprovação recomeça do zero: os dados mudaram (inclusive, talvez, o valor —
+// e com ele a alçada), então uma aprovação de nível 1 já dada não pode valer
+// para o que o responsável não viu. Por isso a edição devolve a solicitação
+// a RASCUNHO na mesma atualização com guarda que grava os campos (tira ela da
+// fila do aprovador atomicamente — se ele aprovar no mesmo instante, só uma
+// das duas ações vence) e em seguida reenvia pelo mesmo caminho de
+// enviarSolicitacao, que recalcula tudo e notifica quem precisa aprovar. Se o
+// reenvio falhar (ex.: o novo valor não cai em nenhuma faixa de alçada), ela
+// fica em RASCUNHO com os dados novos — editável e enviável de novo pela
+// própria tela.
+export async function editarAntesDaAprovacao(
+  id: string,
+  atorId: string,
+  input: CriarSolicitacaoInput
+) {
+  const atual = await getDb().solicitacao.findUnique({
+    where: { id },
+    select: { status: true, solicitanteId: true },
+  });
+  if (!atual) {
+    throw new Error("Solicitação não encontrada.");
+  }
+  if (atorId !== atual.solicitanteId) {
+    throw new Error("Só o solicitante pode editar essa solicitação.");
+  }
+  const mensagemStatusInvalido =
+    "Só é possível editar uma solicitação que ainda está aguardando aprovação.";
+  if (!estaAguardandoAprovacao(atual.status)) {
+    throw new Error(mensagemStatusInvalido);
+  }
+
+  await processarEdicaoSolicitacao(
+    id,
+    atorId,
+    input,
+    atual.status,
+    "editado_antes_aprovacao",
+    mensagemStatusInvalido,
+    { status: StatusSolicitacao.RASCUNHO }
+  );
+
+  return processarEnvio(
+    id,
+    StatusSolicitacao.RASCUNHO,
+    "reenviado",
+    "Essa solicitação foi alterada por outra ação enquanto isso — atualize a página e tente de novo."
+  );
+}
+
 // Sem isso, um rascunho criado por engano (tipo errado, duplicado) não tinha
 // como sair da lista de "Minhas solicitações" — só dava para editar ou
-// enviar, nunca descartar. Restrito a RASCUNHO de propósito: uma vez enviada,
-// a solicitação passa a ter histórico relevante para outras pessoas
-// (aprovador, comprador, Financeiro) e sai do fluxo por rejeição ou
-// conclusão, não por exclusão. SolicitacaoHistorico tem FK ON DELETE
-// RESTRICT para solicitacoes — precisa apagar o histórico antes da própria
-// solicitação, daí a transação.
-export async function excluirRascunho(id: string, atorId: string): Promise<void> {
-  const solicitacao = await getDb().solicitacao.findUnique({ where: { id } });
+// enviar, nunca descartar. Vale também depois de enviada, enquanto ainda
+// aguarda aprovação (ver STATUS_AGUARDANDO_APROVACAO): até a aprovação final
+// nada aconteceu fora do fluxo de aprovação. Depois disso, não — a
+// solicitação passa a ter histórico relevante para comprador e Financeiro e
+// sai do fluxo por rejeição ou conclusão, não por exclusão.
+// SolicitacaoHistorico tem FK ON DELETE RESTRICT para solicitacoes — precisa
+// apagar o histórico antes da própria solicitação, daí a transação.
+export async function excluirSolicitacao(id: string, atorId: string): Promise<void> {
+  const solicitacao = await getDb().solicitacao.findUnique({
+    where: { id },
+    include: {
+      departamento: { include: { responsavel: true, diretor: true } },
+      solicitante: true,
+    },
+  });
   if (!solicitacao) {
     throw new Error("Solicitação não encontrada.");
   }
   if (atorId !== solicitacao.solicitanteId) {
     throw new Error("Só o solicitante pode excluir essa solicitação.");
   }
-  if (solicitacao.status !== StatusSolicitacao.RASCUNHO) {
-    throw new Error("Só é possível excluir uma solicitação que está em rascunho.");
+  if (
+    solicitacao.status !== StatusSolicitacao.RASCUNHO &&
+    !estaAguardandoAprovacao(solicitacao.status)
+  ) {
+    throw new Error(
+      "Só é possível excluir uma solicitação em rascunho ou que ainda está aguardando aprovação."
+    );
   }
 
   await getDb().$transaction(async (tx) => {
     await tx.solicitacaoHistorico.deleteMany({ where: { solicitacaoId: id } });
     const { count } = await tx.solicitacao.deleteMany({
-      where: { id, status: StatusSolicitacao.RASCUNHO },
+      where: { id, status: solicitacao.status },
     });
     if (count === 0) {
       throw new Error(
@@ -675,6 +752,27 @@ export async function excluirRascunho(id: string, atorId: string): Promise<void>
       );
     }
   });
+
+  // Quem estava com a aprovação pendente recebeu um e-mail com o link — avisa
+  // que ela não existe mais, em vez de deixá-lo cair numa página 404. Sem
+  // link aqui de propósito, pelo mesmo motivo.
+  const aprovadorPendente =
+    solicitacao.status === StatusSolicitacao.ENVIADO
+      ? solicitacao.departamento.responsavel
+      : solicitacao.status === StatusSolicitacao.AGUARDANDO_NIVEL2
+        ? solicitacao.departamento.diretor
+        : null;
+  if (aprovadorPendente) {
+    await getEmailSender().send({
+      to: aprovadorPendente.email,
+      subject: "Solicitação de compra excluída pelo solicitante",
+      html:
+        `<p>Olá, ${aprovadorPendente.nome}.</p>` +
+        `<p>${solicitacao.solicitante.nome} excluiu a solicitação "${solicitacao.descricao}" ` +
+        `(${formatarReais(solicitacao.valor)}), que estava aguardando sua aprovação. ` +
+        "Não é preciso fazer mais nada.</p>",
+    });
+  }
 }
 
 // Compartilhado por encerrarSolicitacaoRejeitada (REJEITADO → CANCELADO) e

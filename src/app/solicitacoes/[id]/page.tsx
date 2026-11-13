@@ -20,7 +20,8 @@ import {
   encerrarSolicitacaoPagamentoRecusadoAction,
   encerrarSolicitacaoRejeitadaAction,
   enviarParaPagamentoAction,
-  excluirRascunhoAction,
+  editarAntesDaAprovacaoAction,
+  excluirSolicitacaoAction,
   reenviarParaPagamentoAction,
   submeterPrestacaoContasAdiantamentoAction,
 } from "../actions";
@@ -41,6 +42,7 @@ import { getUsuarioAutenticado } from "@/lib/require-usuario";
 import {
   DIAS_UTEIS_VENCIMENTO_COMPRADOR_SOLICITANTE,
   ehAdiantamentoCompradorSolicitante,
+  estaAguardandoAprovacao,
   obterSolicitacao,
 } from "@/lib/workflow";
 import { listarListasSolicitacao } from "@/lib/solicitacao-listas";
@@ -104,6 +106,13 @@ export default async function SolicitacaoDetalhePage({
 
   const podeEditarRascunho =
     solicitacao.status === StatusSolicitacao.RASCUNHO &&
+    solicitacao.solicitanteId === usuario.id;
+
+  // Enviada mas sem aprovação final ainda — o solicitante pode corrigir (a
+  // aprovação recomeça do zero) ou excluir (ver editarAntesDaAprovacao/
+  // excluirSolicitacao em workflow.ts).
+  const podeEditarAntesDaAprovacao =
+    estaAguardandoAprovacao(solicitacao.status) &&
     solicitacao.solicitanteId === usuario.id;
 
   const podeDesignarComprador =
@@ -175,7 +184,7 @@ export default async function SolicitacaoDetalhePage({
   // CamposSolicitacao) — só faz sentido ler o cookie quando algum painel de
   // edição vai de fato aparecer.
   const [listasParaEdicao, valoresPreservados] =
-    podeEditarEReenviar || podeEditarRascunho
+    podeEditarEReenviar || podeEditarRascunho || podeEditarAntesDaAprovacao
       ? await Promise.all([listarListasSolicitacao(), lerFormularioPreservado()])
       : [null, undefined];
 
@@ -280,10 +289,36 @@ export default async function SolicitacaoDetalhePage({
             listas={listasParaEdicao}
             salvarAction={editarRascunhoAction}
             enviarAction={editarRascunhoEEnviarAction}
-            excluirAction={excluirRascunhoAction}
+            excluirAction={excluirSolicitacaoAction}
             dataVencimentoMinima={dataVencimentoMinima}
             valoresPreservados={valoresPreservados}
           />
+        )}
+
+        {podeEditarAntesDaAprovacao && listasParaEdicao && (
+          <PainelEdicaoReenvio
+            solicitacao={solicitacao}
+            listas={listasParaEdicao}
+            action={editarAntesDaAprovacaoAction}
+            dataVencimentoMinima={dataVencimentoMinima}
+            valoresPreservados={valoresPreservados}
+            titulo="Editar antes da aprovação"
+            aviso="Ao salvar, a aprovação recomeça do zero: a solicitação volta para o primeiro aprovador, que será avisado por e-mail."
+          />
+        )}
+
+        {podeEditarAntesDaAprovacao && (
+          <div className="card-block">
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              Não precisa mais dessa compra? Você pode excluir a solicitação enquanto ela não foi
+              aprovada.
+            </p>
+            <ExcluirButton
+              action={excluirSolicitacaoAction.bind(null, solicitacao.id)}
+              confirmMessage="Excluir esta solicitação? O aprovador será avisado e essa ação não pode ser desfeita."
+              label="Excluir solicitação"
+            />
+          </div>
         )}
 
         {funcionarios && (

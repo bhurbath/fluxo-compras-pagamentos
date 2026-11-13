@@ -17,7 +17,8 @@ import {
   encerrarSolicitacaoRejeitada,
   enviarParaPagamento,
   enviarSolicitacao,
-  excluirRascunho,
+  editarAntesDaAprovacao,
+  excluirSolicitacao,
   obterSolicitacao,
   reenviarParaPagamento,
   reenviarSolicitacao,
@@ -509,13 +510,38 @@ export const editarRascunhoEEnviarAction = comUsuarioAutenticado(
   }
 );
 
-export const excluirRascunhoAction = comUsuarioAutenticado(
+// Enviada mas ainda aguardando aprovação — mesmo raciocínio de
+// editarEReenviarAction. editarAntesDaAprovacao já edita e reenvia junto (a
+// aprovação recomeça do zero), então não há um segundo passo aqui.
+export const editarAntesDaAprovacaoAction = comUsuarioAutenticado(
+  async (usuario, id: string, formData: FormData) => {
+    try {
+      const atual = await obterSolicitacao(id);
+      const input = await parseSolicitacaoForm(
+        usuario,
+        formData,
+        id,
+        atual?.notaFiscalUrls ?? [],
+        atual?.cotacaoUrls ?? []
+      );
+      await editarAntesDaAprovacao(id, usuario.id, input);
+    } catch (error) {
+      await preservarFormulario(formData);
+      redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
+    }
+
+    redirect(`/solicitacoes/${id}`);
+  }
+);
+
+// Rascunho ou ainda aguardando aprovação (ver excluirSolicitacao).
+export const excluirSolicitacaoAction = comUsuarioAutenticado(
   // formData é exigido só para casar com a assinatura que ExcluirButton
   // espera (form action sempre passa um) — a exclusão não usa nenhum campo.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async (usuario, id: string, _formData: FormData) => {
     try {
-      await excluirRascunho(id, usuario.id);
+      await excluirSolicitacao(id, usuario.id);
     } catch (error) {
       redirectComErro(`/solicitacoes/${id}`, toFriendlyError(error));
     }
